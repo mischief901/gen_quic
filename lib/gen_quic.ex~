@@ -1,0 +1,18 @@
+defmodule GenQuic do
+  @moduledoc """
+  Documentation for GenQuic.
+  """
+
+  @doc """
+  Hello world.
+
+  ## Examples
+
+      iex> GenQuic.hello
+      :world
+
+  """
+  def hello do
+    :world
+  end
+end
