@@ -22,3 +22,5 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 gen_quic-*.tar
 
+# Ignore these stupid emacs saves.
+*~
