@@ -6,33 +6,20 @@
 %%% @end
 %%% Created : 16 May 2018 by alex <alex@alex-Lenovo>
 %%%-------------------------------------------------------------------
--module(quic_headers).
+-module(quic_packet).
 
 %% API
--export([]).
+-export([parse_packet/2]).
+-export([form_packet/2, form_packet/3]).
+-export([form_acks/2]).
 
--include("quic_headers.hrl").
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-from_header(Packet) ->
-    ok.
 
 
-to_header(Packet) ->
-    ok.
-
-
-
-from_frame(Data) ->
-    ok.
-
-
-
-to_frame({type, Data}) ->
-    ok.
 
 %%%===================================================================
 %%% Internal functions

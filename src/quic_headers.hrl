@@ -1,7 +1,21 @@
 %% This comprises of the define statements needed to build default quic 
 %% packet and frame headers.
 
--define(LONG, <<1:1>>).
--define(SHORT, <<0:0>>).
--define(INIT, <<127:7>>).
--define(
+-record(quic_conn,
+	{
+	 version,
+	 socket,
+	 destID,
+	 srcID,
+	 ip_addr,
+	 port,
+	 crypto_token,
+	 cong_control
+	}).
+
+	    
+-ifdef(DEBUG).
+-define(DBG(Format, Args), (io:format((Format), (Args)))).
+-else.
+-define(DBG(Format, Args), ok).
+-endif.

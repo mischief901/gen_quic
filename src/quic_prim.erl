@@ -10,39 +10,52 @@
 
 %% API
 
--export([connect/4]).
--export([listen/3]).
--export([accept/2]).
--export([shutdown/1]).
+-export([open/1, open/2]).
 -export([sendto/2]).
--export([recvfrom/3]).
+-export([recvfrom/2]).
+-export([connect/3]).
+-export([controlling_process/2]).
+
+-include("quic_headers.hrl").
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-connect(Address, Port, Opts, Timeout) ->
-    ok.
+%% TODO: Add more error handling. Check args and funs in prim_inet.
 
-listen(Port, Opts, Timeout) ->
-    ok.
+open(Port) when is_integer(Port) ->
+  open(Port, []);
+open(Opts) when is_list(Opts) ->
+  open(0, Opts).
 
-accept(Socket, Timeout) ->
-    ok.
+open(Port, Opts) ->
+  ?DBG("Calling open on ~p in prim_inet.~n", [Port]),
+  prim_inet:open(Port, Opts).
 
-shutdown(Socket) ->
-    ok.
 
 sendto(Socket, Packet) ->
-    case quic_db:getaddr(Socket) of
-	{ok, {IP, Port}} ->
-	    prim_inet:sendto(Socket, IP, Port, Packet);
-	Error ->
-	    Error
-    end.
+  %% Socket is connected so the destination IP and Port should be bound to 
+  %% socket.
+  ?DBG("Calling sendto on ~p in prim_inet.~n", [Socket]),
+  prim_inet:sendto(Socket, Packet).
 
-recvfrom(Socket, Length, Timeout) ->
-    prim_inet:recvfrom(Socket, Length, Timeout).
+
+recvfrom(Socket, Timeout) ->
+  ?DBG("Calling recvfrom on ~p in prim_inet.~n", [Socket]),
+  prim_inet:recvfrom(Socket, 0, Timeout).
+
+
+connect(Socket, IP, Port) ->
+  %% Bind the destination IP and Port to the socket.
+  ?DBG("Calling connect on ~p to ~p:~p in prim_inet.~n", [Socket, IP, Port]),
+  prim_inet:connect(Socket, IP, Port, infinity).
+
+
+controlling_process(Socket, Pid) ->
+  ?DBG("Calling controlling_process on ~p to ~p in prim_inet.~n", [Socket, Pid]),
+  prim_inet:controlling_process(Socket, Pid).
+
 
 %%%===================================================================
 %%% Internal functions

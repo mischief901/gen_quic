@@ -2,37 +2,30 @@
 %%% @author alex <alex@alex-Lenovo>
 %%% @copyright (C) 2018, alex
 %%% @doc
-%%%
+%%% This is a generic quic version for testing and setting the API.
 %%% @end
-%%% Created : 16 May 2018 by alex <alex@alex-Lenovo>
+%%% Created : 18 May 2018 by alex <alex@alex-Lenovo>
 %%%-------------------------------------------------------------------
--module(quic_headers).
+-module(quic_vxx).
 
 %% API
--export([]).
-
--include("quic_headers.hrl").
+-export([version/0, get_type/1]).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-from_header(Packet) ->
-    ok.
+version() ->
+    {quic_vxx, "quic_vxx"}.
 
 
-to_header(Packet) ->
-    ok.
-
-
-
-from_frame(Data) ->
+%% Parses type information dependent on the version number.
+get_type(Data) ->
     ok.
 
 
 
-to_frame({type, Data}) ->
-    ok.
+
 
 %%%===================================================================
 %%% Internal functions
