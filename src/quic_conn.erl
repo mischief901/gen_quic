@@ -183,25 +183,31 @@ init([Opts]) ->
 %% The handle_event functions are organized in order of calls -> [casts ->]
 %% timeouts -> info
 
+
+%% Connect
 %% Connect state change from open to version_neg.
 handle_event({call, From}, {connect, Address, Port, Timeout}, 
              open, #quic_conn{opts=Opts}=Conn0) ->
 
-  {ok, LSocket} = quic_prim:open(Opts),
+  {ok, Socket} = quic_prim:open(Opts),
 
-  %% Try and connect to server
-  case quic_prim:connect(Conn0#quic_conn{socket=LSocket, 
-                                         ip_addr=Address, 
-                                         port=Port}, Timeout) of
-    {ok, Conn} ->
-      %% successful connection. Enter connected state and reply with socket.
-      {next_state, connected, {Conn, #quic_packet{}, {[], []}}, 
-       [{reply, From, {ok, LSocket}}]};
+  %% Setup conn and create initial packet to send.
+  {ok, {initial, Conn, Packet}} = quic_packet:form_packet(initial, 
+                                                          Conn0#quic_conn{socket=Socket, 
+                                                                          ip_addr=Address, 
+                                                                          port=Port}),
 
-    Error ->
-      %% unsuccessful connection. Close the statem.
-      {stop, Error, Conn0}
-  end;
+  %% Associate the socket with the address and port.
+  quic_prim:connect(Socket, Address, Port),
+
+  %% Send initial packet to server.
+  quic_prim:sendto(Socket, Packet),
+
+  {next_state, initial_connect, {Conn, Packet, From, Timeout}, 
+   [{{timeout, connect}, Timeout, {connect, Address, Port}}]};
+
+
+%% Listen
 
 handle_event({call, From}, {listen, Port}, 
              open, #quic_conn{opts=Opts} = Conn0) ->
@@ -217,6 +223,9 @@ handle_event({call, From}, {listen, Port},
       %% failure to open port
       {stop, Error, Conn0}
   end;
+
+
+%% Accept
 
 handle_event({call, From}, 
              {accept, Timeout},
@@ -328,6 +337,16 @@ handle_event({call,From}, _Msg, State, Data) ->
 %% The following are all of the timeouts for the statem.
 %%
 
+
+%% Initial Connect: Waiting for response from server or timeout.
+
+handle_event({timeout, connect}, {connect, Address, Port, From}, 
+             initial_connect, {Conn, Packet}) ->
+  {stop_and_reply, timeout, {reply, From, {error, timeout}}};
+
+
+%% Closing: 
+
 handle_event({timeout, recover}, {recover, Packet}, closing, 
              {Conn, _, Recv}) ->
   %% resend packet and wait for acks.
@@ -356,6 +375,36 @@ handle_event({timeout, recover}, {recover, Packet}, connected,
 %%
 %% The following are the info events (active udp message receives)
 %% 
+
+
+%% Initial Connect: Waiting for response from server or timeout.
+
+handle_event(info, {udp, Socket, IP, Port, Recv_Packet}, initial_connect,
+             {#quic_conn{socket=Socket, src_conn_id = SCID}=Conn0, 
+              Initial_Packet, From, Timeout}) ->
+
+  case quic_packet:parse_packet(Packet) of
+    {ok, {retry, #quic_packet{dest_conn_id = DCID} = Retry_Info}} when
+        DCID =:= SCID ->
+      %% Need check for DCID to ensure correct server and not malicious.
+      {ok, {retry, Conn, Packet}} = quic_packet:form_packet(retry, {Conn0, 
+                                                                    Retry_Info}),
+      %% Resend packet and keep state
+      quic_prim:sendto(Socket, Packet),
+      {keep_state, {Conn, Packet}};
+    
+    {ok, {retry, _}} ->
+      ?DBG("Error. DCID did not match SCID from initial packet.~n", []),
+      {stop_and_reply, {error, badarg}, {reply, From, {error, badarg}}};
+
+    {ok, {
+    
+    Error ->
+      ?DBG("Error parsing initial reply from server.~n", []),
+      Error
+  end;
+
+
 
 handle_event(info, {udp, Socket, IP, Port, Recv_Packet}, connected,
              {#quic_conn{socket=Socket, ip_addr=IP, port=Port}=Conn, 

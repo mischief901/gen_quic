@@ -24,3 +24,6 @@ gen_quic-*.tar
 
 # Ignore these stupid emacs saves.
 *~
+
+# Ignore .beam files.
+*.beam

@@ -19,7 +19,7 @@
 -export([close/1, shutdown/2]).
 -export([send/2]).
 -export([recv/2, recv/3]).
-                                                % TODO: -export([controlling_process/2]).
+%% TODO: -export([controlling_process/2]).
 
 -include("inet_int.hrl").
 
@@ -238,17 +238,18 @@ close(Socket) ->
 
 
 %% 
-%% Shutdown: Maybe not needed.
+%% Shutdown: Used to close streams.
 %%
 
--spec shutdown(Socket) -> ok | {error, Reason} when
+-spec shutdown({Socket, Stream_ID}) -> ok | {error, Reason} when
     Socket :: socket(),
+    Stream_ID :: non_neg_integer(),
     Reason :: inet:posix().
 
-shutdown(Socket) ->
+shutdown({Socket, Stream_ID}) ->
   case inet_db:lookup_socket(Socket) of
     {ok, Mod} ->
-      Mod:shutdown(Socket);
+      Mod:shutdown({Socket, Stream_ID});
     Error ->
       Error
   end.
@@ -259,9 +260,18 @@ shutdown(Socket) ->
 %%
 
 -spec send(Socket, Packet) -> ok | {error, Reason} when
-    Socket :: socket(),
+    Socket :: socket() | {socket(), Stream_ID},
+    Stream_ID :: non_neg_integer(),
     Packet :: iodata(),
     Reason :: closed | inet:posix().
+
+send({Socket, Stream_ID}, Packet) ->
+  case inet_db:lookup_socket(Socket) of
+    {ok, Mod} ->
+      Mod:send({Socket, Stream_ID}, Packet);
+    Error ->
+      Error
+  end;
 
 send(Socket, Packet) ->
   case inet_db:lookup_socket(Socket) of
@@ -277,11 +287,20 @@ send(Socket, Packet) ->
 %%
 
 -spec recv(Socket, Length) -> {ok, Packet} | {error, Reason} when
-    Socket :: socket(),
+    Socket :: socket()| {socket(), Stream_ID},
+    Stream_ID :: non_neg_integer(),
     Length :: non_neg_integer(),
     Packet :: string() | binary() | HttpPacket,
     Reason :: closed | not_owner | inet:posix(),
     HttpPacket :: term().
+
+recv({Socket, Stream_ID}, Length) when is_integer(Length) ->
+  case inet_db:lookup_socket(Socket) of
+    {ok, Mod} ->
+      Mod:recv({Socket, Stream_ID}, Length);
+    Error ->
+      Error
+  end;
 
 recv(Socket, Length) when is_integer(Length) ->
   case inet_db:lookup_socket(Socket) of
@@ -292,12 +311,21 @@ recv(Socket, Length) when is_integer(Length) ->
   end.
 
 -spec recv(Socket, Length, Timeout) -> {ok, Packet} | {error, Reason} when
-    Socket :: socket(),
+    Socket :: socket() | {socket(), Stream_ID},
+    Stream_ID :: non_neg_integer(),
     Length :: non_neg_integer(),
     Timeout :: timeout(),
     Packet :: string() | binary() | HttpPacket,
     Reason :: closed | not_owner | inet:posix(),
     HttpPacket :: term().
+
+recv({Socket, Stream_ID}, Length, Timeout) when is_integer(Length) ->
+  case inet_db:lookup_socket(Socket) of
+    {ok, Mod} ->
+      Mod:recv({Socket, Stream_ID}, Length, Timeout);
+    Error ->
+      Error
+  end;
 
 recv(Socket, Length, Timeout) when is_integer(Length) ->
   case inet_db:lookup_socket(Socket) of

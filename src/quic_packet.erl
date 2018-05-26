@@ -13,6 +13,7 @@
 -export([form_packet/2, form_packet/3]).
 -export([form_acks/2]).
 
+-include("quic_headers.hrl").
 
 %%%===================================================================
 %%% API
