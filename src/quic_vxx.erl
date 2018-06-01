@@ -46,6 +46,7 @@ from_type(<<?LONG:1, Type:7>>) ->
       {error, badarg}
   end;
 
+%% (small | medium | large)_packet_no is probably not a great description.
 from_type(<<?SHORT:1, _Key:1, 1:1, 1:1, 0:1, _Reserved:1, Type:2>>) ->
   case Type of 
     ?ONEBYTE ->
@@ -68,29 +69,39 @@ from_type(Other) ->
 %% Includes the type of packet (Long or Short) in the output. 
 to_type(initial) ->
   {ok, list_to_bitstring([<<?LONG:1>>, <<?INITIAL:7>>])};
+
 to_type(retry) ->
   {ok, list_to_bitstring([<<?LONG:1>>, <<?RETRY:7>>])};
+
 to_type(handshake) ->
   {ok, list_to_bitstring([<<?LONG:1>>, <<?HANDSHAKE:7>>])};
+
 to_type(protected) ->
   {ok, list_to_bitstring([<<?LONG:1>>, <<?PROTECTED:7>>])};
+
 to_type(version_neg) ->
   {ok, list_to_bitstring([<<?LONG:1>>, <<?VERSION_NEG:7>>])};
+
 to_type(small_packet_no) ->
-  {ok, list_to_bitstring([<<?SHORT:1>>, <<01100:5>>, <<?ONEBYTE:2>>])};
+  {ok, list_to_bitstring([<<?SHORT:1>>, <<?DEFAULT_SHORT:5>>, <<?ONEBYTE:2>>])};
+
 to_type(medium_packet_no) ->
-  {ok, list_to_bitstring([<<?SHORT:1>>, <<01100:5>>, <<?TWOBYTE:2>>])};
+  {ok, list_to_bitstring([<<?SHORT:1>>, <<?DEFAULT_SHORT:5>>, <<?TWOBYTE:2>>])};
+
 to_type(large_packet_no) ->
-  {ok, list_to_bitstring([<<?SHORT:1>>, <<01100:5>>, <<?FOURBYTE:2>>])};
+  {ok, list_to_bitstring([<<?SHORT:1>>, <<?DEFAULT_SHORT:5>>, <<?FOURBYTE:2>>])};
+
 to_type(Other) ->
   ?DBG("Type definition ~p not found.~n", [Other]),
   {error, badarg}.
 
 
 new_scid() ->
+  ?DBG("Source ", []),
   {scid, new_conn_id()}.
 
 new_scid(Length) when Length >= 4, Length =< 18 ->
+  ?DBG("Source ", []),
   {scid, new_conn_id(Length)};
 
 new_scid(Length) ->
@@ -99,9 +110,11 @@ new_scid(Length) ->
 
 
 new_dcid() ->
+  ?DBG("Destination ", []),
   {dcid, new_conn_id()}.
 
 new_dcid(Length) when Length >= 4, Length =< 18 ->
+  ?DBG("Destination ", []),
   {dcid, new_conn_id(Length)};
 
 new_dcid(Length) ->

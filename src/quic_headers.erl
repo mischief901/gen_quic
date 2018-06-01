@@ -9,7 +9,7 @@
 -module(quic_headers).
 
 %% API
--export([]).
+-export([from_header/1, to_header/1]).
 
 -include("quic_headers.hrl").
 
@@ -24,15 +24,6 @@ from_header(Packet) ->
 to_header(Packet) ->
     ok.
 
-
-
-from_frame(Data) ->
-    ok.
-
-
-
-to_frame({type, Data}) ->
-    ok.
 
 %%%===================================================================
 %%% Internal functions

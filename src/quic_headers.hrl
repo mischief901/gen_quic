@@ -1,6 +1,8 @@
 %% This comprises of the define statements needed to build default quic 
 %% packet and frame headers.
 
+
+%% Set this to true to add debug statements places. Comment it out otherwise.
 -define(DEBUG, true).
 
 -record(quic_conn,
@@ -8,9 +10,10 @@
 	 version_mod = quic_vxx,
 	 cc_mod = quic_cc,
          recovery_mod = quic_recovery,
+         crypto_mod = quic_crypto,
 	 socket,
-	 destID,
-	 srcID,
+	 dest_conn_ID,
+	 src_conn_ID,
 	 ip_addr,
 	 port,
 	 crypto_token,
@@ -40,11 +43,11 @@
          largest_enc,
          largest_ack,
          ack_delay_enc,
-         ack_delay_time = 0, %% millisecond delay for ack responses.
+         ack_delay_time, %% millisecond delay for ack responses.
          ack_block_enc,
          ack_block_count
         }).
-         
+
 
 -record(quic_frame,
         {
@@ -66,9 +69,6 @@
          stream_data, %% current bytes
          max_stream_data %% max bytes
         }).
-
-
-
 
 -ifdef(DEBUG).
 -define(DBG(Format, Args), (io:format((Format), (Args)))).
