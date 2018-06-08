@@ -2,145 +2,215 @@
 %%% @author alex <alex@alex-Lenovo>
 %%% @copyright (C) 2018, alex
 %%% @doc
-%%% This is a generic quic version for testing and setting the API.
+%%%
 %%% @end
-%%% Created : 18 May 2018 by alex <alex@alex-Lenovo>
+%%% Created :  1 Jun 2018 by alex <alex@alex-Lenovo>
 %%%-------------------------------------------------------------------
 -module(quic_vxx).
 
+-behaviour(gen_server).
+
 %% API
--export([version/0]).
--export([from_type/1, to_type/1]).
--export([new_scid/0, new_scid/1]).
--export([new_dcid/0, new_dcid/1]).
--export([new_packet_no/0]).
+%% MAYBE: Move to new file for parsing utility functions?
+-export([parse_var_length/1, to_var_length/1]).
+
+-export([supported/1]).
+-export([start_link/1]).
+
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+         terminate/2, code_change/3, format_status/2]).
+
+-define(SERVER, ?MODULE).
 
 -include("quic_headers.hrl").
--include("quic_vxx.hrl").
+-include("quic_vx_1.hrl").
+
+-record(state, {supported}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-version() ->
-  %% 32-bits
-  {version, <<?VERSION_NUMBER:32>>}.
+%% Common functions for all versions.
+
+%% Reads a variable length integer from the given Binary.
+parse_var_length(<<0:1, 0:1, Integer:6, Rest/binary>>) ->
+  {Integer, Rest};
+parse_var_length(<<0:1, 1:1, Integer:14, Rest/binary>>) ->
+  {Integer, Rest};
+parse_var_length(<<1:1, 0:1, Integer:30, Rest/binary>>) ->
+  {Integer, Rest};
+parse_var_length(<<1:1, 1:1, Integer:62, Rest/binary>>) ->
+  {Integer, Rest};
+parse_var_length(Other) ->
+  ?DBG("Incorrect variable length encoded integer: ~p~n", [Other]),
+  {error, badarg}.
+
+%% Creates the smallest possible variable length integer.
+to_var_length(Integer) when Integer < 64 ->
+  list_to_bitstring([<<0:2>>, <<Integer:6>>]);
+
+to_var_length(Integer) when Integer < 16384 ->
+  list_to_bitstring([<<1:2>>, <<Integer:14>>]);
+
+to_var_length(Integer) when Integer < 1073741824 ->
+  list_to_bitstring([<<2:2>>, <<Integer:30>>]);
+
+to_var_length(Integer) ->
+  list_to_bitstring([<<3:2>>, <<Integer:62>>]).
 
 
-%% Parses type information dependent on the version number.
-from_type(<<?LONG:1, Type:7>>) ->
-  case Type of
-    ?INITIAL ->
-      {long, initial};
-    ?RETRY ->
-      {long, retry};
-    ?HANDSHAKE ->
-      {long, handshake};
-    ?PROTECTED ->
-      {long, protected};
-    ?VERSION_NEG ->
-      {long, version_neg};
+
+-spec supported(Version) -> {ok, {Module, Version}} |
+                            {error, Error} when
+    Version :: binary(),
+    Module :: atom(),
+    Error :: term().
+
+supported(Version) ->
+  gen_server:call(?SERVER, {check, Version}).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Starts the server
+%% @end
+%%--------------------------------------------------------------------
+-spec start_link(Versions) -> {ok, Pid :: pid()} |
+                      {error, Error :: {already_started, pid()}} |
+                      {error, Error :: term()} |
+                      ignore when
+    Versions :: [{Module, Version}],
+    Module :: atom(),
+    Version :: binary().
+
+start_link(Versions) ->
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [Versions], []).
+
+%%%===================================================================
+%%% gen_server callbacks
+%%%===================================================================
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Initializes the server
+%% @end
+%%--------------------------------------------------------------------
+-spec init(Args :: term()) -> {ok, State :: term()} |
+                              {ok, State :: term(), Timeout :: timeout()} |
+                              {ok, State :: term(), hibernate} |
+                              {stop, Reason :: term()} |
+                              ignore.
+
+init([Versions]) ->
+  process_flag(trap_exit, false),
+  Default = {quic_vx_1, <<?VERSION_NUMBER:32>>},
+  {ok, #state{supported=[Default | Versions]}}.
+  
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling call messages
+%% @end
+%%--------------------------------------------------------------------
+-spec handle_call(Request :: term(), From :: {pid(), term()}, State :: term()) ->
+                     {reply, Reply :: term(), NewState :: term()} |
+                     {reply, Reply :: term(), NewState :: term(), Timeout :: timeout()} |
+                     {reply, Reply :: term(), NewState :: term(), hibernate} |
+                     {noreply, NewState :: term()} |
+                     {noreply, NewState :: term(), Timeout :: timeout()} |
+                     {noreply, NewState :: term(), hibernate} |
+                     {stop, Reason :: term(), Reply :: term(), NewState :: term()} |
+                     {stop, Reason :: term(), NewState :: term()}.
+
+handle_call({check, Version}, _From, 
+            #state{supported=Supported}=State) ->
+  case lists:keyfind(Version, 2, Supported) of
+    false ->
+      ?DBG("Version ~p not found.~n", [Version]),
+      {reply, {error, unsupported}, State};
+    {_Module, Version} = Support ->
+      ?DBG("Version ~p Supported.~n", [Version]),
+      {reply, {ok, Support}, State};
     Other ->
-      ?DBG("Unsupported long header type received: ~p~n", [Other]),
-      ?DBG("Length: ~p~n", [bit_size(Type)]),
-      {error, badarg}
+      ?DBG("Error checking version with lists:keyfind: ~p~n", [Other]),
+      {reply, Other, State}
   end;
 
-%% (small | medium | large)_packet_no is probably not a great description.
-from_type(<<?SHORT:1, _Key:1, 1:1, 1:1, 0:1, _Reserved:1, Type:2>>) ->
-  case Type of 
-    ?ONEBYTE ->
-      {short, small_packet_no};
-    ?TWOBYTE ->
-      {short, medium_packet_no};
-    ?FOURBYTE ->
-      {short, large_packet_no};
-    Other ->
-      ?DBG("Packet type not currently supported: ~p~n", [Other]),
-      {error, badarg}
-  end;
+handle_call(_Request, _From, State) ->
+  Reply = ok,
+  {reply, Reply, State}.
 
-from_type(Other) ->
-  ?DBG("Incorrect header format received: ~p~n", [Other]),
-  {error, badarg}.
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling cast messages
+%% @end
+%%--------------------------------------------------------------------
+-spec handle_cast(Request :: term(), State :: term()) ->
+                     {noreply, NewState :: term()} |
+                     {noreply, NewState :: term(), Timeout :: timeout()} |
+                     {noreply, NewState :: term(), hibernate} |
+                     {stop, Reason :: term(), NewState :: term()}.
+handle_cast(_Request, State) ->
+  {noreply, State}.
 
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling all non call/cast messages
+%% @end
+%%--------------------------------------------------------------------
+-spec handle_info(Info :: timeout() | term(), State :: term()) ->
+                     {noreply, NewState :: term()} |
+                     {noreply, NewState :: term(), Timeout :: timeout()} |
+                     {noreply, NewState :: term(), hibernate} |
+                     {stop, Reason :: normal | term(), NewState :: term()}.
+handle_info(_Info, State) ->
+  {noreply, State}.
 
-%% Converts the atom to the corresponding packet number.
-%% Includes the type of packet (Long or Short) in the output. 
-to_type(initial) ->
-  {ok, list_to_bitstring([<<?LONG:1>>, <<?INITIAL:7>>])};
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% This function is called by a gen_server when it is about to
+%% terminate. It should be the opposite of Module:init/1 and do any
+%% necessary cleaning up. When it returns, the gen_server terminates
+%% with Reason. The return value is ignored.
+%% @end
+%%--------------------------------------------------------------------
+-spec terminate(Reason :: normal | shutdown | {shutdown, term()} | term(),
+                State :: term()) -> any().
+terminate(_Reason, _State) ->
+  ok.
 
-to_type(retry) ->
-  {ok, list_to_bitstring([<<?LONG:1>>, <<?RETRY:7>>])};
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Convert process state when code is changed
+%% @end
+%%--------------------------------------------------------------------
+-spec code_change(OldVsn :: term() | {down, term()},
+                  State :: term(),
+                  Extra :: term()) -> {ok, NewState :: term()} |
+                                      {error, Reason :: term()}.
+code_change(_OldVsn, State, _Extra) ->
+  {ok, State}.
 
-to_type(handshake) ->
-  {ok, list_to_bitstring([<<?LONG:1>>, <<?HANDSHAKE:7>>])};
-
-to_type(protected) ->
-  {ok, list_to_bitstring([<<?LONG:1>>, <<?PROTECTED:7>>])};
-
-to_type(version_neg) ->
-  {ok, list_to_bitstring([<<?LONG:1>>, <<?VERSION_NEG:7>>])};
-
-to_type(small_packet_no) ->
-  {ok, list_to_bitstring([<<?SHORT:1>>, <<?DEFAULT_SHORT:5>>, <<?ONEBYTE:2>>])};
-
-to_type(medium_packet_no) ->
-  {ok, list_to_bitstring([<<?SHORT:1>>, <<?DEFAULT_SHORT:5>>, <<?TWOBYTE:2>>])};
-
-to_type(large_packet_no) ->
-  {ok, list_to_bitstring([<<?SHORT:1>>, <<?DEFAULT_SHORT:5>>, <<?FOURBYTE:2>>])};
-
-to_type(Other) ->
-  ?DBG("Type definition ~p not found.~n", [Other]),
-  {error, badarg}.
-
-
-new_scid() ->
-  ?DBG("Source ", []),
-  {scid, new_conn_id()}.
-
-new_scid(Length) when Length >= 4, Length =< 18 ->
-  ?DBG("Source ", []),
-  {scid, new_conn_id(Length)};
-
-new_scid(Length) ->
-  ?DBG("Invalid SCID length: ~p~n", [Length]),
-  {error, badarg}.
-
-
-new_dcid() ->
-  ?DBG("Destination ", []),
-  {dcid, new_conn_id()}.
-
-new_dcid(Length) when Length >= 4, Length =< 18 ->
-  ?DBG("Destination ", []),
-  {dcid, new_conn_id(Length)};
-
-new_dcid(Length) ->
-  ?DBG("Invalid DCID length: ~p~n", [Length]),
-  {error, badarg}.
-
-
-new_packet_no() ->
-  %% Random distribution between 0 and 2^32 - 1025 = 4294966271.
-  %% Does not have to be cryptographically secure or a uniform distribution.
-  Pkt_no = rand:uniform(4294966271),
-  ?DBG("Initial packet number of ~p chosen.~n", [Pkt_no]),
-  {pkt_no, Pkt_no}.
-
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% This function is called for changing the form and appearance
+%% of gen_server status when it is returned from sys:get_status/1,2
+%% or when it appears in termination error logs.
+%% @end
+%%--------------------------------------------------------------------
+-spec format_status(Opt :: normal | terminate,
+                    Status :: list()) -> Status :: term().
+format_status(_Opt, Status) ->
+  Status.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-new_conn_id() ->
-  new_conn_id(?DEFAULT_CONN_ID_LENGTH).
-
-new_conn_id(Length) ->
-  ID = crypto:strong_rand_bytes(Length),
-  ?DBG("ID of byte size ~p generated: ~p~n", [Length, ID]),
-  ID.
-  
-  
-

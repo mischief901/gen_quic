@@ -27,3 +27,6 @@ gen_quic-*.tar
 
 # Ignore .beam files.
 *.beam
+
+# Ignore .S files.
+*.S
