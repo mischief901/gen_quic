@@ -10,133 +10,16 @@
 
 %% API
 
--compile(export_all).
+-export([read_frame/1]).
+-export([to_frame/1]).
 
 
 -include("quic_headers.hrl").
--include("quic_vxx.hrl").
+-include("quic_vx_1.hrl").
 
 %%%===================================================================
 %%% API
 %%%===================================================================
-
-%% TODO: Use records instead of tuples.
-
-%% read_frame is built so that a packet (with frames in it) can be recursed
-%% over once and parse a list of all the data in the packet.
-
-%% MAYBE: A potential source of optimization is to switch the order on all
-%% these tuples. It would keep the Binary info in the same register. Might be
-%% caught and optimized by the compiler.
-read_frame(<<0:1, 0:1, 0:1, 0:1, Type:4, Rest/binary>> = Binary) ->
-  case Type of
-    ?PADDING ->
-      ?DBG("Padding.~n", []),
-      {padding, Rest};
-
-    ?RST_STREAM ->
-      ?DBG("Reset Stream.~n", []),
-      {Stream_ID, Rest1} = parse_var_length(Rest),
-      {App_Error, Rest2} = parse_app_error(Rest1),
-      {Offset, Rest3} = parse_var_length(Rest2),
-      {{rst_stream, Stream_ID, App_Error, Offset}, Rest3};
-
-    ?CONN_CLOSE ->
-      ?DBG("Connection Close.~n", []),
-      {Conn_Error, Rest1} = parse_conn_error(Rest),
-      {Reason_Len, Rest2} = parse_var_length(Rest1),
-      {Reason, Rest3} = parse_message(Rest2, Reason_Len),
-      {{conn_close, Conn_Error, Reason}, Rest3};
-
-    ?APP_CLOSE ->
-      ?DBG("Application Close.~n", []),
-      {App_Error, Rest1} = parse_app_error(Rest),
-      {Reason_Len, Rest2} = parse_var_length(Rest1),
-      {Reason, Rest3} = parse_message(Rest2, Reason_Len),
-      {{app_close, App_Error, Reason}, Rest3};
-
-    ?MAX_DATA ->
-      ?DBG("Max Data.~n", []),
-      {Max_Data, Rest1} = parse_var_length(Rest),
-      {{max_data, Max_Data}, Rest1};
-
-    ?MAX_STREAM_DATA ->
-      ?DBG("Max Stream Data.~n", []),
-      {Stream_ID, Rest1} = parse_var_length(Rest),
-      {Max_Stream_Data, Rest2} = parse_var_length(Rest1),
-      {{max_stream_data, Stream_ID, Max_Stream_Data}, Rest2};
-
-    ?MAX_STREAM_ID ->
-      ?DBG("Max Stream ID.~n", []),
-      {Max_Stream_ID, Rest1} = parse_var_length(Rest),
-      {{max_stream_id, Max_Stream_ID}, Rest1};
-
-    ?PING ->
-      ?DBG("Ping.~n", []),
-      {ping, Rest};
-
-    ?BLOCKED ->
-      ?DBG("Blocked.~n", []),
-      {Offset, Rest1} = parse_var_length(Rest),
-      {{blocked, Offset}, Rest1};
-
-    ?STREAM_BLOCKED ->
-      ?DBG("Stream Blocked.~n", []),
-      {Stream_ID, Rest1} = parse_var_length(Rest),
-      {Offset, Rest2} = parse_var_length(Rest1),
-      {{stream_blocked, Stream_ID, Offset}, Rest2};
-
-    ?STREAM_ID_BLOCKED ->
-      ?DBG("Stream ID Blocked.~n", []),
-      {Stream_ID, Rest1} = parse_var_length(Rest),
-      {{stream_id_blocked, Stream_ID}, Rest1};
-
-    ?NEW_CONN_ID ->
-      ?DBG("New Connection ID.~n", []),
-      {Sequence, <<Length:8, Rest1/binary>>} = parse_var_length(Rest),
-      <<Conn_ID:Length/unit:8, Rest2>> = Rest1,
-      <<Token:128, Rest3/binary>> = Rest2,
-      {{new_conn_id, Sequence, Length, Conn_ID, Token}, Rest3};
-
-    ?STOP_SENDING ->
-      ?DBG("Stop Sending.~n", []),
-      {Stream_ID, Rest1} = parse_var_length(Rest),
-      {App_Error, Rest2} = parse_app_error(Rest1),
-      {{stop_sending, Stream_ID, App_Error}, Rest2};
-
-    ?ACK_FRAME ->
-      ?DBG("Ack Frame.~n", []),
-      {Largest, Rest1} = parse_var_length(Rest),
-      {Ack_Delay, Rest2} = parse_var_length(Rest1),
-      {Ack_Block_Count, Rest3} = parse_var_length(Rest2),
-      {Acks, Rest4} = parse_ack_blocks(Rest3, Largest, Ack_Block_Count),
-      %% TODO: Change to #quic_ack_frame{} record
-      {{ack_frame, Largest, Ack_Delay, Ack_Block_Count, Acks}, Rest4};
-
-    ?PATH_CHALLENGE ->
-      ?DBG("Path Challenge.~n", []),
-      <<Challenge:64, Rest1/binary>> = Rest,
-      {{path_challenge, Challenge}, Rest1};
-
-    ?PATH_RESPONSE ->
-      ?DBG("Path Response.~n", []),
-      <<Response:64, Rest1/binary>> = Rest,
-      {{path_response, Response}, Rest1};
-
-    Other ->
-      %% Since all the numbers that can fit in 4-bits occur above, this shouldn't
-      %% happen.
-      ?DBG("Invalid type received: ~p~n", [Other]),
-      {{error, badarg}, Binary}
-
-  end;
-
-read_frame(<<1:4, 0:1, Off:1, Len:1, Fin:1 , Rest/binary>>) ->
-  parse_stream(Rest, {Off, Len, Fin});
-
-read_frame(Other) ->
-  ?DBG("Not a proper frame type: ~p.~n", [Other]),
-  {error, badarg}.
 
 %% Fin bit is not set for stream_data.
 to_frame({stream_data, {Stream_ID, Offset, Message}}) ->
@@ -260,7 +143,7 @@ to_frame(Other) ->
   ?DBG("Invalid frame type ~p~n", [Other]),
   {error, badarg}.
 
-  
+
   
 %%%===================================================================
 %%% Internal functions

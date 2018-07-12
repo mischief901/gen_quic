@@ -2,118 +2,138 @@
 %%% @author alex <alex@alex-Lenovo>
 %%% @copyright (C) 2018, alex
 %%% @doc
+%%% Probably better as a gen_statem.
+%%% The quic_prim module is a gen_server for providing flow control,
+%%% congestion control, and reliability over a udp socket.
+%%% The gen_server is registered via the quic_registry module and
+%%% creates a single interface over the socket for all quic streams.
+%%% Prior to sending information packet headers (including packet 
+%%% numbers) are assigned via this process. All packets are received,
+%%% parsed, and acked via this process as well. This is a potential
+%%% bottleneck to explore in the future.
 %%%
+%%% Unsent and Unacked packets are stored in a priority queue and 
+%%% moved to a second priority queue after being sent, but still unacked.
+%%% When the packet is acked, it is removed from the second priority queue.
+%%% The priority queues are ranked by packet number. The purpose of
+%%% the second queue is to reduce the impact of filtering out acks,
+%%% which is O(n).
 %%% @end
-%%% Created :  1 Jun 2018 by alex <alex@alex-Lenovo>
+%%% Created : 29 Jun 2018 by alex <alex@alex-Lenovo>
 %%%-------------------------------------------------------------------
--module(quic_vxx).
+
+-module(quic_prim).
 
 -behaviour(gen_server).
 
 %% API
-%% MAYBE: Move to new file for parsing utility functions?
-%% -export([parse_var_length/1, to_var_length/1]).
-
--export([supported/1]).
--export([start_link/1]).
+-export([open/1]).
+-export([connect/3]).
+-export([reconnect/3]).
+-export([send/2]).
+-export([close/1]).
+-export([controlling_process/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3, format_status/2]).
 
--define(SERVER, ?MODULE).
-
--include("quic_headers.hrl").
--include("quic_vx_1.hrl").
-
--record(state, {supported}).
+-record(state, 
+        {
+         socket,
+         ip_addr,
+         port,
+         options,
+         sent,
+         unsent
+        }).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
+-spec controlling_process(Socket, Pid) -> Result when
+    Socket :: gen_quic:socket(),
+    Pid :: pid(),
+    Result :: ok | {error, Reason},
+    Reason :: closed | not_owner | badarg | inet:posix().
 
-%% %% Reads a variable length integer from the given Binary.
-%% parse_var_length(<<0:1, 0:1, Integer:6, Rest/binary>>) ->
-%%   {Integer, Rest};
-%% parse_var_length(<<0:1, 1:1, Integer:14, Rest/binary>>) ->
-%%   {Integer, Rest};
-%% parse_var_length(<<1:1, 0:1, Integer:30, Rest/binary>>) ->
-%%   {Integer, Rest};
-%% parse_var_length(<<1:1, 1:1, Integer:62, Rest/binary>>) ->
-%%   {Integer, Rest};
-%% parse_var_length(Other) ->
-%%   ?DBG("Incorrect variable length encoded integer: ~p~n", [Other]),
-%%   {error, badarg}.
-
-%% %% Creates the smallest possible variable length integer.
-%% to_var_length(Integer) when Integer < 64 ->
-%%   list_to_bitstring([<<0:2>>, <<Integer:6>>]);
-
-%% to_var_length(Integer) when Integer < 16384 ->
-%%   list_to_bitstring([<<1:2>>, <<Integer:14>>]);
-
-%% to_var_length(Integer) when Integer < 1073741824 ->
-%%   list_to_bitstring([<<2:2>>, <<Integer:30>>]);
-
-%% to_var_length(Integer) ->
-%%   list_to_bitstring([<<3:2>>, <<Integer:62>>]).
+controlling_process(Socket, Pid) ->
+  inet:udp_controlling_process(Socket, Pid).
 
 
+-spec open(Opts) -> Result when
+    Opts :: [Opt],
+    Opt :: gen_quic:option(),
+    Result :: {ok, Socket} | {error, Reason},
+    Socket :: gen_quic:socket(),
+    Reason :: inet:posix().
 
--spec supported(Version) -> {ok, {Module, Version}} |
-                            {error, Error} when
-    Version :: binary(),
-    Module :: atom(),
-    Error :: term().
+open(Opts) when is_list(Opts) ->
+  {ok, Socket} = inet_udp:open(0, Opts),
+  {ok, Pid} = gen_server:start_link(via(Socket), ?MODULE, [Socket, Opts], []),
+  controlling_process(Socket, Pid),
+  {ok, Socket}.
 
-supported(Version) ->
-  gen_server:call(?SERVER, {check, Version}).
 
-%%--------------------------------------------------------------------
-%% @doc
-%% Starts the server
-%% @end
-%%--------------------------------------------------------------------
--spec start_link(Versions) -> {ok, Pid :: pid()} |
-                      {error, Error :: {already_started, pid()}} |
-                      {error, Error :: term()} |
-                      ignore when
-    Versions :: [{Module, Version}],
-    Module :: atom(),
-    Version :: binary().
+-spec connect(Socket, IP, Port) -> Result when
+    Socket :: gen_quic:socket(),
+    IP :: inet:address(),
+    Port :: non_neg_integer(),
+    Result :: ok.
 
-start_link(Versions) ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [Versions], []).
+connect(Socket, IP, Port) ->  
+  gen_server:cast(via(Socket), {connect, IP, Port}).
+
+
+-spec reconnect(Socket, IP, Port) -> Result when
+    Socket :: gen_quic:socket(),
+    IP :: inet:address(),
+    Port :: non_neg_integer(),
+    Result :: ok.
+
+reconnect(Socket, IP, Port) ->
+  gen_server:cast(via(Socket), {connect, IP, Port}).
+
+-spec send(Socket, Packet) -> Result when
+    Socket :: gen_quic:socket(),
+    Packet :: binary(),
+    Result :: ok.
+
+send(Socket, Packet) ->
+  gen_server:cast(via(Socket), {send, Packet}).
+
+
+%% Signals the gen_server should stop once all packets have been 
+%% sent and acked.
+-spec close(Socket) -> Result when
+    Socket :: gen_quic:socket(),
+    Result :: ok.
+
+close(Socket) ->
+  gen_server:cast(via(Socket), close).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Initializes the server
-%% @end
-%%--------------------------------------------------------------------
 -spec init(Args :: term()) -> {ok, State :: term()} |
                               {ok, State :: term(), Timeout :: timeout()} |
                               {ok, State :: term(), hibernate} |
                               {stop, Reason :: term()} |
                               ignore.
 
-init([Versions]) ->
-  process_flag(trap_exit, false),
-  Default = {quic_vx_1, <<?VERSION_NUMBER:32>>},
-  {ok, #state{supported=[Default | Versions]}}.
-  
+init([Socket, Opts]) ->
+  process_flag(trap_exit, true),
+  State =  #state{
+              socket=Socket, 
+              options=Opts,
+              sent=queue:new(),
+              unsent=queue:new()
+             },
+  {ok, State}.
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling call messages
-%% @end
-%%--------------------------------------------------------------------
+
 -spec handle_call(Request :: term(), From :: {pid(), term()}, State :: term()) ->
                      {reply, Reply :: term(), NewState :: term()} |
                      {reply, Reply :: term(), NewState :: term(), Timeout :: timeout()} |
@@ -124,37 +144,39 @@ init([Versions]) ->
                      {stop, Reason :: term(), Reply :: term(), NewState :: term()} |
                      {stop, Reason :: term(), NewState :: term()}.
 
-handle_call({check, Version}, _From, 
-            #state{supported=Supported}=State) ->
-  case lists:keyfind(Version, 2, Supported) of
-    false ->
-      ?DBG("Version ~p not found.~n", [Version]),
-      {reply, {error, unsupported}, State};
-    {_Module, Version} = Support ->
-      ?DBG("Version ~p Supported.~n", [Version]),
-      {reply, {ok, Support}, State};
-    Other ->
-      ?DBG("Error checking version with lists:keyfind: ~p~n", [Other]),
-      {reply, Other, State}
-  end;
+handle_call({connect, IP, Port}, _From, #state{socket=Socket}=State) ->
+  prim_inet:connect(Socket, IP, Port),
+  {reply, ok, State};
 
 handle_call(_Request, _From, State) ->
   Reply = ok,
   {reply, Reply, State}.
 
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling cast messages
-%% @end
-%%--------------------------------------------------------------------
+
+
 -spec handle_cast(Request :: term(), State :: term()) ->
                      {noreply, NewState :: term()} |
                      {noreply, NewState :: term(), Timeout :: timeout()} |
                      {noreply, NewState :: term(), hibernate} |
                      {stop, Reason :: term(), NewState :: term()}.
-handle_cast(_Request, State) ->
-  {noreply, State}.
+
+handle_cast({send, Packet}, #state{unsent=Unsent}=State) ->
+  {noreply, State#state{unsent=queue:in(Unsent, Packet)}};
+
+handle_cast(close, #state{socket=Socket, 
+                          unsent=Unsent, 
+                          sent=Sent}=State) ->
+  case {queue:is_empty(Unsent),
+        queue:is_empty(Sent)} of
+    {true, true} ->
+      inet:udp_close(Socket),
+      {stop, normal};
+
+    _Not_Done ->
+      %% Check again in 500 milliseconds
+      start_timer(500, self(), close),
+      {noreply, State}
+  end.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -167,7 +189,23 @@ handle_cast(_Request, State) ->
                      {noreply, NewState :: term(), Timeout :: timeout()} |
                      {noreply, NewState :: term(), hibernate} |
                      {stop, Reason :: normal | term(), NewState :: term()}.
-handle_info(_Info, State) ->
+
+handle_info(close, #state{socket=Socket, 
+                          unsent=Unsent, 
+                          sent=Sent}=State) ->
+  case {queue:is_empty(Unsent),
+        queue:is_empty(Sent)} of
+    {true, true} ->
+      inet:udp_close(Socket),
+      {stop, normal};
+
+    _Not_Done ->
+      %% Check again in 500 milliseconds
+      start_timer(500, self(), close),
+      {noreply, State}
+  end;
+
+handle_info(Info, State) ->
   {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -213,3 +251,7 @@ format_status(_Opt, Status) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+
+via(Name) ->
+  {via, quic_registry, Name}.

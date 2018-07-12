@@ -104,5 +104,15 @@
 -define(STOPPING, 0).
 
 
--record(quic_vx_1, {type, dest_conn_len, src_conn_len, dest_conn, src_conn,
-                    header_mod, frame_mod, version, payload_len, packet_num}).
+-record(quic_vx_1, 
+        {type, 
+         dest_conn_len, 
+         src_conn_len, 
+         dest_conn,
+         src_conn,
+         header_mod, 
+         frame_mod, 
+         version, 
+         payload_len, 
+         packet_num
+        }).

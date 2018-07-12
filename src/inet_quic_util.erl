@@ -11,10 +11,23 @@
 %% API
 -export([quic_module/1]).
 -export([getservbyname/2]).
+-export([is_opt/2]).
+-export([get_opt/2]).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+
+%% Returns true if the given option is defined, otherwise returns false.
+%% Just a wrapper for lists:keymember.
+is_opt(Opts, Field) ->
+  lists:keymember(Field, 1, Opts).
+
+
+get_opt(Opts, Type) ->
+  proplists:lookup(Type, Opts).
+
 
 quic_module(Opts) ->
     %% Calling inet's mod function should work, but it isn't exported.

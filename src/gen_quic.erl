@@ -16,14 +16,17 @@
 -export([connect/3, connect/4]).
 -export([listen/2]).
 -export([accept/1, accept/2]).
+-export([open/2]).
 -export([close/1, shutdown/2]).
 -export([send/2]).
 -export([recv/2, recv/3]).
-%% TODO: -export([controlling_process/2]).
+-export([controlling_process/2]).
 
 -include("inet_int.hrl").
 
--type socket() :: port().
+-type socket() :: inet:socket() |
+                  {inet:socket(), StreamID :: non_neg_integer()}.
+
 
 -type option() ::
         {active, true | false | once | -32768..32767} |
@@ -226,6 +229,23 @@ accept(PeerSocket, Timeout) ->
       Error
   end.
 
+
+-spec open(Socket, Opts) -> Result when
+    Socket :: port(),
+    Opts :: [Opt],
+    Opt :: gen_quic:stream_options(),
+    Result :: {ok, {Socket, StreamID}} | {error, Reason},
+    StreamID :: non_neg_integer(),
+    Reason :: inet:posix().
+
+open(Socket, Opts) ->
+  case inet_db:lookup_socket(Socket) of
+    {ok, Mod} ->
+      Mod:open(Socket, Opts);
+    Error ->
+      Error
+  end.
+
 %%
 %% Close
 %%
@@ -260,7 +280,7 @@ shutdown({Socket, Stream_ID}) ->
 %%
 
 -spec send(Socket, Packet) -> ok | {error, Reason} when
-    Socket :: socket() | {socket(), Stream_ID},
+    Socket :: socket(),
     Stream_ID :: non_neg_integer(),
     Packet :: iodata(),
     Reason :: closed | inet:posix().
@@ -287,8 +307,7 @@ send(Socket, Packet) ->
 %%
 
 -spec recv(Socket, Length) -> {ok, Packet} | {error, Reason} when
-    Socket :: socket()| {socket(), Stream_ID},
-    Stream_ID :: non_neg_integer(),
+    Socket :: socket(),
     Length :: non_neg_integer(),
     Packet :: string() | binary() | HttpPacket,
     Reason :: closed | not_owner | inet:posix(),
@@ -311,13 +330,11 @@ recv(Socket, Length) when is_integer(Length) ->
   end.
 
 -spec recv(Socket, Length, Timeout) -> {ok, Packet} | {error, Reason} when
-    Socket :: socket() | {socket(), Stream_ID},
-    Stream_ID :: non_neg_integer(),
+    Socket :: socket(),
     Length :: non_neg_integer(),
     Timeout :: timeout(),
-    Packet :: string() | binary() | HttpPacket,
-    Reason :: closed | not_owner | inet:posix(),
-    HttpPacket :: term().
+    Packet :: string() | binary(),
+    Reason :: closed | not_owner | inet:posix().
 
 recv({Socket, Stream_ID}, Length, Timeout) when is_integer(Length) ->
   case inet_db:lookup_socket(Socket) of

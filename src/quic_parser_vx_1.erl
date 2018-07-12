@@ -19,7 +19,7 @@
 
 parse_packet(<<1:1, Type_Bin:7, _Vx:32, Packet/bits>>, Info) ->
 
-  {ok, Type} = from_type(Type_Bin),  
+  {ok, Type} = from_type(Type_Bin),
   Packet_Info = Info#quic_packet{type=Type},
 
   parse_next(Packet, Packet_Info, [long_header], long_header());
@@ -310,7 +310,11 @@ validate_packet(Pkt_Info,
                 [App_Error, Stream_ID, stop_sending | Rest], 
                 Acc) ->
 
-  Frame = #quic_frame{type=stop_sending, data={Stream_ID, App_Error}},
+  Frame = #quic_frame{
+             type=stop_sending, 
+             data={Stream_ID, App_Error}
+            },
+
   validate_packet(Pkt_Info, Rest, [Frame | Acc]);
 
 validate_packet(Pkt_Info, 
@@ -462,18 +466,70 @@ validate_packet(Pkt_Info,
 %% Ack block. This is the only one that keeps the reversed ordered.
 %% Smallest to Largest makes more sense to process on the connection side.
 %% Begins with end_ack_block atom and ends with ack_frame atom.
-validate_packet(Pkt_Info, [end_ack_block | Rest], Acc) ->
-  construct_ack_frame(Pkt_Info, Rest, Acc, [], 0).
+%% This does traverse the entire ack block frame twice, so it is a potential
+%% source of optimization.
+validate_packet(Pkt_Info, [end_ack_block | Rest], Frames) ->
+  read_acks(Pkt_Info, Rest, Frames, []).
 
-%% 
-construct_ack_frame(#quic_packet{ack_frame = Ack} = Pkt_Info, 
-                    [Current_Count, Delay, Largest, ack_frame], 
-                    Frame_Acc, Acks, Current_Count) ->
+%% Pops all ack ranges off the stack and into a new accumulator to allow
+%% in order processessing of the ack ranges.
+read_acks(Pkt_Info, [Ack, Block_Count, Delay, Largest_Ack, ack_frame | Stack], 
+          Frames, Acc) ->
+
+  construct_ack_frame(Pkt_Info#quic_packet{
+                        ack_delay=Delay,
+                        ack_count=Block_Count
+                       },
+                      Stack, Frames, [Ack | Acc], Largest_Ack);
+
+read_acks(Pkt_Info, [Ack, Gap | Rest], Frames, Acc) ->
+  read_acks(Pkt_Info, Rest, Frames, [Gap, Ack | Acc]).
+
+%% Calculates the largest and smallest ack packet number in the frame
+%% Pushes it onto the ack_frame list in #quic_packet{}.
+
+
+construct_ack_frame(#quic_packet{ack_frames = Ack_List} = Pkt_Info,
+                    Stack, Frames, [Ack], Largest) ->
+
+  Smallest = Largest - Ack,
   
-  validate_packet(Pkt_Info#quic_packet{ack_frame=
+  Ack_Frame = #quic_acks{
+                 type = ack,
+                 largest = Largest,
+                 smallest = Smallest
+                },
 
+  validate_packet(Pkt_Info#quic_packet{ack_frames = [Ack_Frame | Ack_List]},
+                  Stack, Frames);
 
+%% The next largest ack is the number of packets is given by:
+%% Next_Largest = Smallest - Gap - 2
+%% where, 
+%% Smallest = Largest - Ack
+%% See Section 7.15.1
+construct_ack_frame(#quic_packet{ack_frames = Ack_List} = Pkt_Info, 
+                    Stack, Frames, [Ack, Gap | Rest], Largest) ->
 
+  Smallest_Ack = Largest - Ack,
+
+  Ack_Frame = #quic_acks{
+                 type = ack,
+                 largest = Largest,
+                 smallest = Smallest_Ack
+                },
+
+  Next_Largest = Smallest_Ack - Gap - 2,
+
+  Gap_Frame = #quic_acks{
+                 type = gap,
+                 largest = Smallest_Ack - 1, % largest unacked packet.
+                 smallest = Next_Largest
+                },
+
+  construct_ack_frame(Pkt_Info#quic_packet{
+                        ack_frames = [Gap_Frame, Ack_Frame | Ack_List]},
+                      Stack, Frames, Rest, Next_Largest).
 
 parse_conn_ids(<<DCIL:4, SCIL:4,
                  Dest_Conn:DCIL/unit:8,
@@ -485,25 +541,17 @@ parse_conn_ids(<<DCIL:4, SCIL:4,
                  } = Info,
                Acc, Funs) ->
 
-  case validate_conn(Dest, <<Dest_Conn>>) of
-    true ->
-      case validate_conn(Src, <<Src_Conn>>) of
-        true ->
-          %% Dest and Src have not been set yet.
-          Packet_Info = Info#quic_packet{
-                          dest_conn_ID = <<Src_Conn>>,
-                          src_conn_ID = <<Dest_Conn>>,
-                          dest_conn_ID_len = SCIL,
-                          src_conn_ID_len = DCIL
-                         },
-          parse_next(Rest, Packet_Info, Acc, Funs);
-
-        false ->
-          ?DBG("Connection IDs do not match.~n", []),
-          ?DBG("Dest: ~p~n~p~n", [Dest, <<Dest_Conn>>]),
-          ?DBG("Src: ~p~n~p~n", [Src, <<Src_Conn>>]),
-          {error, protocol_violation}
-      end;
+  case {validate_conn(Dest, <<Dest_Conn>>), 
+        validate_conn(Src, <<Src_Conn>>)} of
+    {true, true} ->
+      %% Dest and Src have not been set yet.
+      Packet_Info = Info#quic_packet{
+                      dest_conn_ID = <<Src_Conn>>,
+                      src_conn_ID = <<Dest_Conn>>,
+                      dest_conn_ID_len = SCIL,
+                      src_conn_ID_len = DCIL
+                     },
+      parse_next(Rest, Packet_Info, Acc, Funs);
 
     _Other ->
       ?DBG("Connection IDs do not match.~n", []),
@@ -512,8 +560,12 @@ parse_conn_ids(<<DCIL:4, SCIL:4,
       {error, protocol_violation}
   end.
 
+%% Returns true if the connection IDs match or are undefined.
 validate_conn(Conn, Conn) -> true;
+validate_conn(undefined, _) -> true;
+validate_conn(_, undefined) -> true;
 validate_conn(_, _) -> false.
+
 
 parse_pkt_num(<<0:1, Pkt_Num:7, Rest/bits>>, Packet_Info, Acc, Funs) ->
   parse_next(Rest, Packet_Info#quic_packet{pkt_num = Pkt_Num}, Acc, Funs);
