@@ -604,7 +604,7 @@ handshake_client({timeout, connect}, Message, #quic_data{conn = Conn}) ->
 
 %% When the server is in the handshake_server state, it has a timer
 %% for the sent initial and handshake packets. The server is waiting
-%% for a handshake packet from thd client indicating that the TLS
+%% for a handshake packet from the client indicating that the TLS
 %% connection has finished (the FIN message). When/if it arrives,
 %% the server cancels the accept timer and transitions into the
 %% protected state where unlimited sending and receiving take place.
@@ -615,13 +615,76 @@ handshake_client({timeout, connect}, Message, #quic_data{conn = Conn}) ->
 %% that the client requires to use 1-RTT packets. Any 0-RTT packets
 %% that arrived throughout the handshake procedure get acked upon
 %% entry to this state in the 1-RTT packet number space.
-handshake_server()
+
+handshake_server(info, {udp, Socket, Address, Port, Packet0},
+                 #quic_data{conn =
+                              #quic_conn{socket = Socket,
+                                         address = Address,
+                                         port = Port},
+                            window_timeout = {Ref, Timeout},
+                            buffer = Buffer
+                           } = Data0) ->
+  %% Packet received, Check if it's the one we want.
+
+  case quic_crypto:parse_packet(Packet0, Data0) of
+    {initial, Data, _, _} ->
+      %% Initial packet here either is a repeat of the client
+      %% handshake or only an ack of the last packet.
+      %% Keep the Data since the largest ack of init_pkt_num changes
+      {keep_state, Data};
+
+    {handshake, Data, Packet, Crypto} ->
+      %% This handshake message should contain the correct handshake
+      %% Message so check it. Either will be valid and move to
+      %% protected state or invalid and stop.
+      handle_handshake(Data, Packet, Crypto);
+    
+    {protected, Data, Packet} = Protected ->
+      %% We do know how to handle this packet, but we really want
+      %% the handshake message first.
+      %% Queue it on the buffer and repeat.
+      {keep_state, Data#quic_data{buffer = Buffer ++ [Protected]}};
+
+    _Other ->
+      %% Everything else is a failure.
+      keep_state_and_data
+  end;
+
+handshake_server(info, {timeout, _Ref, 
+                        {server_init, Packets, Attempt}},
+                #quic_data{conn = Conn,
+                           window_timeout = {_Ref, Timeout}
+                          } = Data) ->
+  if
+    is_list(Packets) ->
+      %% Fold over the list
+      %% The ok as Acc makes sure they all send.
+      ok = lists:foldl(fun(Packet, ok) -> do_send(Conn, Packet) end,
+                       ok, Packets);
+    true ->
+      ok = do_send(Packets)
+  end,
+
+  Timer = erlang:start_timer(self(), Timeout * 2,
+                             {server_init, Packets, Attempt + 1}),
+  
+  {keep_state,
+   Data#quic_data{window_timeout = {Timer, Timeout * 2}}};        
+
+handshake_server({timeout, accept}, Message, 
+                 #quic_data{conn=Conn}) ->
+  %% Accept timeout.
+  {stop_and_reply, {Conn#quic_conn.owner, Message}}.
+
+
+%% TODO: Protected state with internal check_buffer
+
 
 
 handle_event(info, {udp_passive, Socket}, 
              #quic_data{conn =
                           #quic_conn{socket = Socket}}) ->
-  %% maintains the connection in an {active, once} state while
+  %% Maintains the connection in an {active, once} state while
   %% the connection handshake is being performed.
   %% After the handshake is successful, the socket is
   %% maintained in an active, true state and this shouldn't
@@ -639,6 +702,7 @@ handle_event(info, {timeout, _Ref, {State, _, _}},
 
 handle_event(info, _, _) ->
   %% Ignore all other event info messages that occur.
+  %% Includes stray udp packets from a different IP and/or Port.
   keep_state_and_data.
 
 
