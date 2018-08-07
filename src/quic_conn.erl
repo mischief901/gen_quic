@@ -58,7 +58,7 @@ connect(Address, Port, Opts, Timeout) ->
 listen(Port, Opts) ->
   case inet_quic_util:is_opt(Opts, buffer_accept) of
     true ->
-      ?DBG("Calling quic_server:listen"),
+      ?DBG("Calling quic_server:listen", []),
       quic_server:listen(Port, Opts);
 
     false ->
@@ -86,10 +86,6 @@ accept(LSocket, Timeout) ->
       quic_server:immediate_accept(LSocket, Timeout);
 
     Pid when is_pid(Pid) ->
-      quic_server:accept(LSocket, Timeout);
-
-    Other ->
-      ?DBG("Incorrect type in Accept: ~p~n", [Other]),
       quic_server:accept(LSocket, Timeout)
   end.
 
@@ -123,7 +119,7 @@ send(Socket, Message) ->
     Socket :: gen_quic:socket(),
     Length :: non_neg_integer(),
     Timeout :: non_neg_integer() | infinity,
-    Result {ok, Data} | {error, Reason},
+    Result :: {ok, Data} | {error, Reason},
     Data :: list() | binary(),
     Reason :: inet:posix() | timeout.
 

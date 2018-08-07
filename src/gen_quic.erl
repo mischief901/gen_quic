@@ -17,12 +17,12 @@
 -export([listen/2]).
 -export([accept/1, accept/2]).
 -export([open/2]).
--export([close/1, shutdown/2]).
+-export([close/1, shutdown/1]).
 -export([send/2]).
 -export([recv/2, recv/3]).
 -export([controlling_process/2]).
 
--include("inet_int.hrl").
+%-include("inet_int.hrl").
 
 -type socket() :: inet:socket() |
                   {inet:socket(), StreamID :: non_neg_integer()}.
@@ -81,7 +81,11 @@
         tos |
         ipv6_only.
 
--export_type([option/0, option_name/0, socket/0]).
+%% This will be expanded later on.
+-type stream_options() ::
+        option().
+
+-export_type([option/0, option_name/0, stream_options/0, socket/0]).
 
 %%%===================================================================
 %%% API
@@ -281,7 +285,6 @@ shutdown({Socket, Stream_ID}) ->
 
 -spec send(Socket, Packet) -> ok | {error, Reason} when
     Socket :: socket(),
-    Stream_ID :: non_neg_integer(),
     Packet :: iodata(),
     Reason :: closed | inet:posix().
 
@@ -351,6 +354,15 @@ recv(Socket, Length, Timeout) when is_integer(Length) ->
     Error ->
       Error
   end.
+
+
+-spec controlling_process(Socket, Pid) -> ok | {error, Reason} when
+    Socket :: socket(),
+    Pid :: pid(),
+    Reason :: not_owner | closed | badarg.
+
+controlling_process(Socket, Pid) ->
+  quic_conn:controlling_process(Socket, Pid).
 
 
 %%%===================================================================

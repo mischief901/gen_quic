@@ -29,8 +29,7 @@ listen(Port, Opts) ->
   ?DBG("Opening Socket for listening on~n", []),
   {ok, Socket} = inet_udp:open(Port, Opts),
 
-  {ok, Pid} = gen_server:start_link(via(Socket), ?MODULE, 
-                                    [self()], []),
+  {ok, Pid} = gen_server:start_link(via(Socket), ?MODULE, [], []),
   inet_udp:controlling_process(Socket, Pid),
   ?DBG("Gen Server Started~n", []),
   {ok, Socket}.
@@ -45,12 +44,12 @@ listen(Port, Opts) ->
 
 accept(LSocket, Timeout) ->
   case gen_server:call(via(LSocket), {accept, LSocket, Timeout}) of
-    {ok, Conn, Initial_Data} ->
-      quic_prim:accept(Conn, Initial_Data);
+    {ok, Data, Frames, TLS_Info} ->
+      quic_prim:accept(Data, Frames, TLS_Info);
 
     {error, timeout} ->
       {error, timeout};
-
+    
     Other ->
       ?DBG("Accept failed: ~p~n", [Other]),
       Other
@@ -63,28 +62,19 @@ accept(LSocket, Timeout) ->
 close(LSocket) ->
   gen_server:stop(via(LSocket), {shutdown, LSocket}, infinity).
 
--spec controlling_process(Socket, Pid) -> Result when
-    Socket :: inet:socket(),
-    Pid :: pid(),
-    Result :: ok | {error, Reason},
-    Reason :: inet:posix() | not_owner.
-
-controlling_process(Socket, Pid) ->
-  gen_server:call(via(Socket), {new_owner, Pid}).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
--spec init([Owner]) -> {ok, State} when
-    Owner :: pid(),
+-spec init([]) -> {ok, State} when
     State :: {Requests, Requests},
     Requests :: [Request],
     Request :: term().
 
-init([Owner]) ->
+init([]) ->
   process_flag(trap_exit, true),
-  {ok, {Owner, {[], []}}}.
+  {ok, {[], []}}.
 
 
 -spec handle_call(Request :: term(), From :: {pid(), term()}, State :: term()) ->
@@ -97,31 +87,17 @@ init([Owner]) ->
                      {stop, Reason :: term(), Reply :: term(), NewState :: term()} |
                      {stop, Reason :: term(), NewState :: term()}.
 
-handle_call({accept, LSocket, Timeout}, From, {From, {[], []}}) ->
+handle_call({accept, LSocket, Timeout}, From, {[], []}) ->
   immediate_accept(LSocket, Timeout);
 
-handle_call(Request, From, {From, {[], Reversed}}) ->
-  handle_call(Request, From, {From, {lists:reverse(Reversed), []}});
+handle_call(Request, From, {[], Reversed}) ->
+  handle_call(Request, From, {lists:reverse(Reversed), []});
 
 handle_call({accept, _LSocket, _Timeout}, 
-            From, 
-            {From, {[Next | Rest], Reversed}}) ->
+            Any, 
+            {[Next | Rest], Reversed}) ->
   ?DBG("Returning next request~n", []),
-  {reply, Next, {From, {Rest, Reversed}}};
-
-handle_call({accept, _LSocket, _Timeout},
-            From,
-            {Owner, {Next, Rest}}) ->
-  %% Someone other than the owning process requested an accept.
-  {reply, {error, not_owner}, {Owner, {Next, Rest}}};
-
-handle_call({new_owner, Pid}, From, {From, {Next, Rest}}) ->
-  {reply, ok, {Pid, {Next, Request}}};
-
-
-handle_call({new_owner, Pid}, From, {Owner, {Next, Rest}}) ->
-  %% Someone other than the owning process requested ownership change.
-  {reply, {error, not_owner}, {Owner, {Next, Request}}};
+  {reply, Next, {Rest, Reversed}};
 
 
 handle_call(Other, _From, State) ->
@@ -146,15 +122,21 @@ handle_cast(Request, State) ->
                      {stop, Reason :: normal | term(), NewState :: term()}.
 
 handle_info({udp, LSocket, IP, Port, Packet}, 
-            {Owner, {Ordered, Reversed}}=State) ->
+            {Ordered, Reversed} = State) ->
 
   ?DBG("Packet received in listening server from: ~p:~p. Parsing.~n", 
        [IP, Port]),
-  Conn0 = #quic_conn{ip_addr=IP, port=Port},
+  Data0 = #quic_data{
+             type = server,
+             conn = #quic_conn{
+                       address = IP, 
+                       port = Port
+                      }
+            },
 
-  case quic_packet:parse_packet(Packet, Conn0) of
-    {ok, Conn, Frames} ->
-      {noreply, {Owner, {Ordered, [{ok, Conn, Frames} | Reversed]}}};
+  case quic_packet:parse_packet(Packet, Data0) of
+    {ok, Data, Frames, TLS_Info} ->
+      {noreply, {Ordered, [{ok, Data, Frames, TLS_Info} | Reversed]}};
 
     {error, Reason} ->
       ?DBG("Invalid packet received from IP: ~p, Port: ~p~n", 
@@ -200,34 +182,44 @@ via(Socket) ->
   {via, quic_registry, Socket).
 
 
--spec immediate_accept(LSocket, Timer) -> Reply when
+-spec immediate_accept(LSocket, Timer) -> Result when
     LSocket :: inet:socket(),
     Timer :: {timer, reference()} | non_neg_integer(),
-    Reply :: {ok, Record, Record} | {error, Reason},
-    Record :: term(),
-    Reason :: inet:posix() | timeout.
+    Result :: {reply, Reply, State},
+    State :: {[], []},
+    Reply :: {ok, Data, Frames, TLS_Info} | {error, Reason},
+    Data :: #quic_data{},
+    Frames :: [quic_frame()],
+    TLS_Info :: #tls_record{},
+    Reason :: gen_quic:errors().
 
 immediate_accept(LSocket, {timer, Timer_Ref}) ->
   receive
     {udp, LSocket, IP, Port, Init_Packet} ->
       ?DBG("Packet received in listening server from: ~p:~p. Parsing.~n", 
            [IP, Port]),
-      Conn0 = #quic_conn{ip_addr=IP, port=Port},
-
-      case quic_packet:parse_packet(Init_Packet, Conn0) of
-        {ok, Conn, Frames} ->
+      Data0 = #quic_data{
+                 type = server,
+                 conn = #quic_conn{
+                           address = IP, 
+                           port = Port
+                          }
+                },
+      
+      case quic_crypto:parse_packet(Init_Packet, Data0) of
+        {initial, Data, Frames, TLS_Info} ->
           %% Cancel the timer after a successful packet is received.;
           erlang:cancel_timer(Timer_Ref),
-          {reply, {ok, Conn, Frames}, State};
+          {reply, {ok, Data, Frames, TLS_Info}, State};
 
         {error, Reason} ->
           ?DBG("Invalid packet received from IP: ~p, Port: ~p~n", 
                [IP, Port]),
           immediate_accept(LSocket, {timer, Timer_Ref})
       end;
-
+    
     {timeout, Timer_Ref, accept} ->
-      {reply, {error, timeout}, State};
+      {reply, {error, timeout}, {[], []}};
 
     {timeout, Other_timer, accept} ->
       %% Ignore other timers that do not match. A timer message could

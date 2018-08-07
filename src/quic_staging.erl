@@ -106,7 +106,7 @@ new(Type) ->
 
 enstage(P_Num, {unpacked, Frame}, 
         #stage{unpacked = QUP0,
-               unpacked_len = Len,
+               unpacked_len = Len
               }=Stage) ->
 
   QUP = enqueue({P_Num, Frame}, QUP0),
@@ -114,7 +114,7 @@ enstage(P_Num, {unpacked, Frame},
 
 enstage(P_Num, {resend, Frame}, 
         #stage{resend = QR0,
-               resend_len = Len,
+               resend_len = Len
               }=Stage) ->
   QR = enqueue({P_Num, Frame}, QR0),
   Stage#stage{resend = QR, resend_len = Len+1};
@@ -327,8 +327,7 @@ destage_none(#stage{unpacked = QUP0,
 
 destage_low(#stage{unpacked = QUP0,
                    unpacked_len = Len1,
-                   pack1 = QP1_0,
-                   pack1_len = Len2} = Stage,
+                   pack1 = QP1_0} = Stage,
             []=Frames, 0=Size) ->
   %% Frames is empty, so unpacked frames are considered.
   case {dequeue(QUP0), dequeue(QP1_0)} of
@@ -357,14 +356,14 @@ destage_low(#stage{unpacked = QUP0,
       end;
 
     {{_, _},
-     {{value, {P2, Frame2}}, QP1}} when byte_size(Frame2) + Size < ?MAX ->
+     {{value, {_P2, Frame2}}, QP1}} when byte_size(Frame2) + Size < ?MAX ->
       %% The unpacked queue is empty or too big and the pack frame fits.
       %% Check if any more pack frames fit.
       destage_low(Stage#stage{pack1 = QP1,
                               pack1_len = Len1-1},
                   [Frame2 | Frames], Size + byte_size(Frame2));
 
-    {{{value, {P1, Frame1}}, QUP},
+    {{{value, {_P1, Frame1}}, QUP},
      {_, _}} when byte_size(Frame1) + Size < ?MAX ->
       %% The unpacked queue fits and the pack frame is empty.
       %% Add unpacked frame and return.
@@ -431,10 +430,10 @@ destage_balanced(#stage{unpacked_len = Len0,
 
         true ->
           %% No more fit so return.
-          {Stage, Frames, Size};
+          {Stage, Frames, Size}
         end;
 
-    {{{value, {P2, Frame2}}, QP1}, {empty, _}} when 
+    {{{value, {_P2, Frame2}}, QP1}, {empty, _}} when 
         byte_size(Frame2) + Size < ?MAX ->
       %% pack2 is empty, but pack1 has an item and fits.
       
@@ -442,7 +441,7 @@ destage_balanced(#stage{unpacked_len = Len0,
                               pack1_len = Len1 - 1},
                   [Frame2 | Frames], Size + byte_size(Frame2));
 
-    {{empty, _}, {{value, {P3, Frame3}}, QP2}} ->
+    {{empty, _}, {{value, {_P3, Frame3}}, QP2}} ->
       %% Only pack2 has frames remaining, so return.
       %% There can only be one frame from pack2.
       {Stage#stage{pack2 = QP2, pack2_len = Len2 - 1},
@@ -494,12 +493,12 @@ destage_balanced(#stage{unpacked = QUP0,
     {{_, _}, {empty, _}} ->
       destage_low(Stage, Frames, Size);
     
-    {{empty, _}, {{value, {P3, Frame3}}, QP2}} when P1 < P3 ->
+    {{empty, _}, {{value, {P3, _Frame3}}, _QP2}} when P1 < P3 ->
       destage_balanced(Stage#stage{unpacked = QUP,
                                    unpacked_len = Len0 - 1},
                        [Frame1], byte_size(Frame1));
     
-    {{empty, _}, {{value, {P3, Frame3}}, QP2}} ->
+    {{empty, _}, {{value, {_P3, Frame3}}, QP2}} ->
       destage_low(Stage#stage{pack2 = QP2,
                               pack2_len = Len2 - 1},
                   [Frame3], byte_size(Frame3))
@@ -513,7 +512,8 @@ destage_balanced(#stage{unpacked = QUP0,
     Size :: non_neg_integer(),
     Result :: {Stage, Frames, Size} | {Stage, empty}.
 
-
+destage_high(_Stage, _Frames, _Size) ->
+  undefined.
 
 
 -spec dequeue(Queue) -> Result when

@@ -1,0 +1,3 @@
+%{
+  "hkdf": {:git, "https://github.com/schnef/hkdf.git", "8d92e0fef2a165beae1224c11c606d3d8d5653ba", []},
+}

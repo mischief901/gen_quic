@@ -2,7 +2,7 @@
 %%% @author alex <alex@alex-Lenovo>
 %%% @copyright (C) 2018, alex
 %%% @doc
-%%%
+%%%  Needs updating to use #quic_data instead of #quic_conn
 %%% @end
 %%% Created : 16 May 2018 by alex <alex@alex-Lenovo>
 %%%-------------------------------------------------------------------
@@ -10,6 +10,7 @@
 
 %% API
 -export([parse_packet/2, form_packet/2]).
+-export([form_header/3]).
 
 -include("quic_headers.hrl").
 
@@ -21,61 +22,59 @@
 %% If supported, version module parses packet. 
 %% Otherwise, returns {error, unsupported}.
 
+
+-spec parse_packet(Raw_Packet, Data) -> Result when
+    Raw_Packet :: binary(),
+    Data :: #quic_data{},
+    Result :: {ok, Data, Frames, TLS_Frames} | 
+              {vx_neg, Versions} |
+              {error, Reason},
+    Frames :: [quic_frame()],
+    TLS_Frames :: #tls_record{},
+    Versions :: [version()],
+    Reason :: gen_quic:errors().
+
 %% Version Negotiation Packet is not version specific.
-parse_packet(<<1:1, _Type:7, 0:32, DCIL:4, SCIL:4, 
-               Dest_Conn:DCIL/unit:8, Src_Conn:SCIL/unit:8, 
-               Vx_Frames/bits>>, 
-             #quic_conn{
-                src_conn_ID=Src,
-                dest_conn_ID=Dest
+parse_packet(<<1:1, _Type:7, 0:32, DCIL:4, SCIL:4,
+               Rest/binary>>,
+             #quic_data{
+                conn = #quic_conn{
+                          src_conn_ID = Dest_Conn,
+                          dest_conn_ID = Src_Conn
+                         }
                }) ->
+  %% Make sure the packet has the correct source and destination connection id's.
+  Dest_Len = from_conn_length(DCIL),
+  Src_Len = from_conn_length(SCIL),
+  
+  <<Dest:Dest_Len/binary, Src:Src_Len/binary, Vx_Frames/binary>> = Rest,
 
-  ?DBG("Dest_Conn: ~p~nSrc_Conn: ~p~n", [Dest_Conn, Src_Conn]),
-
-  %% Check to make sure the Packet has the correct destination and source
-  %% connection ID's before parsing otherwise signal protocol violation.
-  %% Prevents a malicious user from DDOS'ing version negotiation packets.
-  %% Maybe move into function header.
-  case Src of
-    <<Dest_Conn>> ->
-      case Dest of 
-        <<Src_Conn>> ->
-          %% All version frames are 32 bits.
-          Versions = [ Vx || <<Vx:32>> <= Vx_Frames ],
-          ?DBG("Versions: ~p~n", [Versions]),
-
-          {vx_neg, <<Dest_Conn>>, <<Src_Conn>>, Versions};
-
-        _Other ->
-          ?DBG("Connection ID's do not match:~n~p~n~p~n", 
-               [Dest, <<Src_Conn>>]),
-          {error, protocol_violation}
-      end;
-
+  case {Dest, Src} of
+    {Dest_Conn, Src_Conn} ->
+      %% Both match.
+      %% All version frames are 32 bits.
+      Versions = [ <<Vx/binary>> || <<Vx:32>> <= Vx_Frames ],
+      
+      {vx_neg, Versions};
+    
     _Other ->
-      ?DBG("Connection ID's do not match:~n~p~n~p~n", 
-           [Src, <<Dest_Conn>>]),
       {error, protocol_violation}
   end;
 
-%% Long header Type. Version specific info not known.
-%% Cannot be optimized since it calls out to another module.
-parse_packet(<<1:1, _Type:7, Version_Bin:32, _Rest/binary>> = Packet, 
-             #quic_conn{
-                src_conn_ID = Src_Conn, % Could be undefined
-                dest_conn_ID = Dest_Conn % Could be undefined
+%% Initial packet Type.
+parse_packet(<<1:1, 16#1f:7, Version_Bin:32, _Rest/binary>> = Packet, 
+             #quic_data{
+                type = server,
+                version = #quic_version{
+                             version_module = undefined
+                            } = Version
                }) ->
 
   %% Lookup version and see if supported.
   case quic_vxx:supported(Version_Bin) of
-    {ok, {Module, Version}} ->
-      Packet_Info = #quic_packet{
-                       version = Version, 
-                       long = 1,
-                       src_conn_ID = Src_Conn,
-                       dest_conn_ID = Dest_Conn
-                      },
+    {ok, {Module, Version_Bin}} ->
       %% Call the version specific module to parse the packet.
+      
       Module:parse_packet(Packet, Packet_Info);
 
     {error, unsupported} ->
@@ -115,21 +114,88 @@ parse_packet(Other, _Unused) ->
 
 
 
--spec form_packet(Type, Conn) -> Result when
-    Type :: atom(),
-    Conn :: record(),
-    Result :: {ok, Conn, Packet} | {error, Reason},
+-spec form_packet(Type, Data) -> Result when
+    Type :: retry |
+            vx_neg,
+    Data :: #quic_data{},
+    Result :: {ok, Data, Packet} | {error, Reason},
     Packet :: binary(),
     Reason :: gen_quic:errors().
 
-form_packet(Type, #quic_conn{version = Version} = Conn) ->
-  case quic_vxx:supported(<<Version>>) of
+%% TODO: Update to use #quic_data{}
+
+%% form_packet/2 is used to create retry and vx_neg packets.
+%% If the version chosen by the client is not supported,
+%% this creates a vx_neg packet from the supported_versions list in version.
+%% For retry packets the initial version is used.
+form_packet(vx_neg, 
+            #quic_data{
+               version = #quic_version{
+                            supported_version = Versions
+                           }
+              } = Data0) ->
+  
+  ok;
+
+form_packet(retry,
+            #quic_data{
+               version = #quic_version{
+                            initial_version = Version
+                           }
+              } = Data) ->
+  case quic_vxx:supported(Version) of
     {ok, {Module, Version}} ->
       %% Call the version specific module to parse the packet.
-      Module:form_packet(Type, Conn);
-
+      Module:form_packet(retry, Data);
+    
     {error, unsupported} ->
       %% Return with unsupported if not supported.
+      %% This should probably call vx_neg.
+      {error, unsupported};
+    
+    Other ->
+      ?DBG("Error checking header version: ~p~n", [Other]),
+      Other
+  end.
+
+
+%% This will be changed to only form payloads of packets.
+%% Should be simpler to handle packet encryption in that case.
+-spec form_packet(Type, Data, Frames) -> Result when
+    Type :: initial |
+            early_data |
+            handshake |
+            short,
+    Data :: #quic_data{},
+    Frames :: [quic_frames()],
+    Result :: {ok, Data, Payload} | {error, Reason},
+    Header :: binary(),
+    Payload :: binary(),
+    Reason :: gen_quic:errors().
+
+%% The version is known and agreed upon. We still need to lookup the correct module
+%% Somehow this needs to make sure that the initial packet from a client or server
+%% has only the information normally sent then.
+%% Same for the handshake packets.
+form_packet(Type,
+            #quic_data{
+               version = #quic_version{
+                            negotiated_version = Version,
+                            version_module = undefined
+                           } = Vx,
+              } = Data0,
+            Frames) ->
+  case quic_vxx:supported(Version) of
+    {ok, {Module, Version}} ->
+
+      Data = Data0#quic_data{
+               version = Vx#quic_version{version_module = Module}
+              },
+
+      Module:form_packet(Type, Data, Frames);
+
+    {error, unsupported} ->
+      %% Maybe call version negotiate at this point.
       {error, unsupported};
 
     Other ->
@@ -137,24 +203,135 @@ form_packet(Type, #quic_conn{version = Version} = Conn) ->
       Other
   end;
 
--spec form_packet(Type, Conn, Frames) -> Result when
-    Type :: atom(),
-    Conn :: record(),
-    Frames :: [Frame],
-    Frame :: binary() | record(),
-    Result :: {ok, Conn, Packet} | {error, Reason},
-    Packet :: binary(),
-    Reason :: gen_quic:errors().
+%% The version_module is already known at this point so we don't need to look it up
+form_packet(Type,
+            #quic_data{
+               version = #quic_version{
+                            version_module = Module
+                           } = Vx,
+              } = Data,
+            Frames) ->
+  Module:form_packet(Type, Data, Frames).
 
-form_packet(Type, #quic_conn{version = Version} = Conn, Frames) ->
-  case quic_vxx:supported(<<Version>>) of
-    {ok, {Module, Version}} ->
-      Module:form_packet(Type, Conn, Frames);
 
-    {error, unsupported} ->
-      {error, unsupported};
+-spec form_header(Type, Data, Payload_Size) -> Header when
+    Type :: initial |
+            early_data |
+            handshake |
+            short,
+    Data :: #quic_data{],
+    Payload_Size :: non_neg_integer(),
+    Header :: binary().
 
-    Other ->
-      ?DBG("Error checking header version: ~p~n", [Other]),
-      Other
-  end.
+form_header(initial, 
+            #quic_data{
+               conn = #quic_conn{
+                         src_conn_ID = Src_ID,
+                         dest_conn_ID = Dest_ID,
+                        },
+               version = #quic_version{
+                            negotiated_version = Version
+                           },
+               init_pkt_num = IPN,
+               retry_token = Retry_Token
+              },
+            Payload_Size) ->
+
+  %% For now all packet numbers are 4 bytes.
+  %% TODO: Change packet number to variable length.
+  Length = to_var_length(Payload_Size + byte_size(Retry_Token) + 4),
+  
+  Src_Conn_Len = conn_length(Src_ID),
+  Dest_Conn_Len = conn_length(Dest_ID),
+
+  <<1:1, 16#7f:7, Version:32, Dest_Conn_Len:4, Src_Conn_Len:4,
+    Dest_ID/binary, Src_ID/binary, Length/binary, IPN:4/unit:8,
+    Reset_Token/binary>>;
+
+form_header(handshake,
+            #quic_data{
+               conn = #quic_conn{
+                         src_conn_ID = Src_ID,
+                         dest_conn_ID = Dest_ID,
+                        },
+               version = #quic_version{
+                            negotiated_version = Version
+                           },
+               hand_pkt_num = HPN
+              },
+            Payload_Size) ->
+  %% For now all packet numbers are 4 bytes.
+  %% TODO: Change packet number to variable length.
+  Length = to_var_length(Payload_Size + 4),
+  
+  Src_Conn_Len = conn_length(Src_ID),
+  Dest_Conn_Len = conn_length(Dest_ID),
+
+  <<1:1, 16#7d:7, Version:32, Dest_Conn_Len:4, Src_Conn_Len:4,
+    Dest_ID/binary, Src_ID/binary, Length/binary, HPN:4/unit:8>>;
+
+form_header(early_data,
+            #quic_data{
+               conn = #quic_conn{
+                         src_conn_ID = Src_ID,
+                         dest_conn_ID = Dest_ID,
+                        },
+               version = #quic_version{
+                            negotiated_version = Version
+                           },
+               init_pkt_num = IPN
+              },
+            Payload_Size) ->
+
+  %% For now all packet numbers are 4 bytes.
+  %% TODO: Change packet number to variable length.
+  Length = to_var_length(Payload_Size + 4),
+  
+  Src_Conn_Len = conn_length(Src_ID),
+  Dest_Conn_Len = conn_length(Dest_ID),
+
+  <<1:1, 16#7c:7, Version:32, Dest_Conn_Len:4, Src_Conn_Len:4,
+    Dest_ID/binary, Src_ID/binary, Length/binary, IPN:4/unit:8>>;
+
+%% TODO: Add key-phase to short packets.
+form_header(short,
+            #quic_data{
+               conn = #quic_conn{
+                         dest_conn_ID = Dest_ID,
+                        },
+               app_pkt_num = APN
+              },
+            _) ->
+  
+  <<1:1, 0:1, 1:1, 1:1, 0:1, 0:1, 0:1, 0:1, Dest_ID/binary, APN:4/unit:8>>.
+
+
+
+%%%%%%%%%%
+%%  Internal Functions
+%%%%%%%%%%
+
+
+%% Section 4.1 QUIC Transport
+%% Connection ID lengths are increased by 3 if non-zero in length.
+%% Allows for an 18 octet connection id to fit into a 4 bit length.
+%% Conversely, encoding the length means you decrement by 3 if non-zero in length.
+%% Everything else is a failure.
+conn_length(<<>>) ->
+  0;
+conn_length(Conn_ID) when byte_size(Conn_ID) >= 4, byte_size(Conn_ID) =< 18 ->
+  byte_size(Conn_ID) - 3.
+
+
+%% This function is present in many places.
+%% Section 7.1 of QUIC.
+to_var_length(Num) when Num < 63 ->
+  <<0:2, Num:6>>;
+to_var_length(Num) when Num < 16383 ->
+  <<1:2, Num:14>>;
+to_var_length(Num) when Num < 1073741823 ->
+  <<2:2, Num:30>>;
+to_var_length(Num) ->
+  <<3:3, Num:62>>.
+
+  

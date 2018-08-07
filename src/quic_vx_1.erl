@@ -10,29 +10,58 @@
 
 %% API
 -export([parse_packet/2]).
-%-export([encode_packet/2]).
+-export([form_packet/2]).
 
 -include("quic_headers.hrl").
--include("quic_vx_1.hrl").
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-%% Type spec is not done yet.
-%% -spec(parse_packet(Packet, Packet_Info) -> 
-%%          {ok, Packet_Info, Frame_Info} |
-%%          {error, Reason} when
-%%     Packet :: binary(),
-%%     Packet_Info :: #quic_packet,
-%%     Frame_Info :: [Frame],
-%%     Frame :: #quic_frame,
-%%     Reason :: quic_error().
+-spec parse_packet(Packet, Data) -> Result when
+    Packet :: binary(),
+    Data :: #quic_data{},
+    Result :: {ok, Data, Frames, TLS_Info} |
+              {error, Reason},
+    Frames :: [Frame],
+    Frame :: quic_frame(),
+    TLS_Info :: #tls_record{},
+    Reason :: gen_quic:quic_errors().
     
-parse_packet(Packet, Packet_Info) ->
-  ?PARSER:parse_packet(Packet, Packet_Info).
+parse_packet(Packet, Data) ->
+  quic_parser_vx_1:parse_packet(Packet, Data).
 
 
+-spec form_packet(Type, Data) -> Result when
+    Type :: retry |
+            vx_neg,
+    Data :: #quic_data{},
+    Result :: {ok, Data, Packet} | {error, Reason},
+    Packet :: binary(),
+    Reason :: gen_quic:errors().
+%% TODO:
+form_packet(retry, Data) ->
+  ok;
+
+form_packet(vx_neg, Data) ->
+  ok.
+
+
+-spec form_packet(Type, Data, Frames) -> Result when
+    Type :: initial |
+            early_data |
+            handshake |
+            short,
+    Data :: #quic_data{},
+    Frames :: [Frame],
+    Frame :: quic_frame(),
+    Result :: {ok, Data, Packet} | {error, Reason},
+    Packet :: binary(),
+    Reason :: gen_quic:errors().
+            
+form_packet(Type, Data, Frames) ->
+  quic_encoder_vx_1:encode_packet(Type, Data, Frames).
+            
 
 %%%===================================================================
 %%% Internal functions

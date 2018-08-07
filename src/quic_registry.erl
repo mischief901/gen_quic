@@ -49,7 +49,7 @@ unregister_name(Name) ->
 
 -spec whereis_name(Name) -> Result when
     Name :: term(),
-    Result :: Pid | undefined.
+    Result :: pid() | undefined.
 
 whereis_name(Name) ->
   gen_server:call(?SERVER, {whereis, Name}).
@@ -105,8 +105,8 @@ init([]) ->
 handle_call({add, {Name, Pid}}, _From, #conns{conn=Conns}=State) ->
   case lists:keyfind(Name, 1, Conns) of
     false ->
-      {reply, yes, #conns{[{Name, Pid} | Conns]}};
-    Other ->
+      {reply, yes, #conns{conn=[{Name, Pid} | Conns]}};
+    _Other ->
       {reply, no, State}
   end;
 
