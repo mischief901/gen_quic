@@ -236,9 +236,9 @@ destage(#stage{resend_len = 0,
                pack2_len = 0,
                pack3_len = 0,
                pack4_len = 0
-              } = Stage, [], 0) ->
+              }, [], 0) ->
   %% Handle empty clause right away.
-  {Stage, empty};
+  empty;
 
 destage(#stage{type = none,
                resend = RQ0,

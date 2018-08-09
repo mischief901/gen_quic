@@ -8,13 +8,13 @@
 %% probably prune them down to have fewer repeated fields.
 -record(quic_conn,
         {
-         socket       :: inet:socket(),
-         address      :: inet:socket_address() |
-                         inet6:socket_address(),
-         port         :: inet:port_number(),
-         owner        :: pid(),
-         dest_conn_ID :: non_neg_integer(),
-         src_conn_ID  :: non_neg_integer()
+         socket        :: inet:socket(),
+         address       :: inet:socket_address() |
+                          inet6:socket_address(),
+         port          :: inet:port_number(),
+         owner         :: pid(),
+         dest_conn_ID  :: non_neg_integer(),
+         src_conn_ID   :: non_neg_integer()
         }).
 
 -type tls_version() :: non_neg_integer().
@@ -143,11 +143,10 @@
          init_pkt_num = 0 :: non_neg_integer(),
          hand_pkt_num = 0 :: non_neg_integer(),
          app_pkt_num  = 0 :: non_neg_integer(),
-         %% *_pkt_num is highest sent packet num
+         %% *_pkt_num is next packet num to send
          init_ack         :: #quic_ack{},
          hand_ack         :: #quic_ack{},
          app_ack          :: #quic_ack{},
-         sent             :: orddict:orddict(),
          ready            :: quic_staging:staging(),
          priority_num     :: non_neg_integer(),
          recv             :: {list(), list()} | 
@@ -158,7 +157,7 @@
          current_data     :: non_neg_integer(),
          %% Keeps track of how much data has been sent.
          next_stream_id   :: non_neg_integer(),
-         crypto           :: #quic_crypto{},
+         crypto = #quic_crypto{} :: #quic_crypto{},
          retry_token      :: binary()
         }).
 
@@ -184,31 +183,34 @@
         }).
 
 
-%% This makes sense as a map of #{frame_parameters => values}.
-%% Maybe just a map instead of the quic_frame record.
-%% #{type => atom(), field1 => Value}.
--record(quic_frame,
-        {
-         type,
-         frame_data :: #{term() => term()}
-        }).
-
 
 %% This is the quic_stream state not the frame.
 -record(quic_stream,
         {
          owner            :: pid(),
-         type             :: {uni | bi, client | server}, 
+         stream_owner     :: boolean(),
+         %% true if started by you.
+         stream_type      :: one_way | both,
          %% Uni or bi-directional stream.
-         %% Client or Server owner.
+         pack_type        :: unpacked | packed,
+         %% Are frames allowed to be packed with frames from other streams.
+         socket           :: inet:socket() | inet6:socket(),
+         socket_pid       :: pid(),
          stream_id        :: non_neg_integer(),
          offset = 0       :: non_neg_integer(),
-         current_data = 0 :: non_neg_integer(),
          max_data         :: non_neg_integer(),
-         recv             :: {[binary()], [binary()]} |
-                             {active, true} |
-                             {active, once} |
-                             {active, N :: non_neg_integer()}
+         recv_state       :: {atom(), [binary()], 
+                              [binary()], #{non_neg_integer() => binary()}} |
+                             {atom(), active, 
+                              true, #{non_neg_integer() => binary()}} |
+                             {atom(), active, 
+                              once, #{non_neg_integer() => binary()}} |
+                             {atom(), active, N :: non_neg_integer(),
+                              #{non_neg_integer() => binary()}}
+         %% The atom() of recv_state is whether the stream is blocked waiting for
+         %% a missing packet.
+         %% The map of non_neg_integer() => binary() is the buffered out of order
+         %% packets.
         }).
 
 -record(tls_record,

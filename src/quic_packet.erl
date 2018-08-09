@@ -61,26 +61,54 @@ parse_packet(<<1:1, _Type:7, 0:32, DCIL:4, SCIL:4,
       {error, protocol_violation}
   end;
 
-%% Initial packet Type.
-parse_packet(<<1:1, 16#1f:7, Version_Bin:32, _Rest/binary>> = Packet, 
+%% First initial packet received by server.
+parse_packet(<<1:1, 16#1f:7, Version_Bin:32, DCIL:4, SCIL:4, 
+               Rest/binary>> = Packet,
              #quic_data{
                 type = server,
+                conn = #quic_conn{
+                          src_conn_ID = undefined,
+                          dest_conn_ID = undefined
+                         } = Conn,
                 version = #quic_version{
                              version_module = undefined
-                            } = Version
-               }) ->
+                            } = Vx,
+                crypto = #quic_crypto{
+                            state = undefined
+                           }
+               } = Data0) ->
+  %% This is the first packet the server received.
+  %% Need to finish parsing header though.
+  Dest_Len = from_conn_length(DCIL),
+  Src_Len = from_conn_length(SCIL),
+  
+  <<Dest_Conn:Dest_Len/binary, Src_Conn:Src_Len/binary, _/binary>> = Rest,
+  
+  Data1 = Data#quic_data{
+            conn = Conn0#quic_conn{
+                     src_conn_ID = Dest_Conn,
+                     dest_conn_ID = Src_Conn
+                    }
+           },
 
   %% Lookup version and see if supported.
   case quic_vxx:supported(Version_Bin) of
     {ok, {Module, Version_Bin}} ->
-      %% Call the version specific module to parse the packet.
-      
-      Module:parse_packet(Packet, Packet_Info);
+      %% Version is supported for set it.
+      Data2 = crypto_init(Data1#quic_data{
+                            version = Vx#quic_version{
+                                        initial_version = Version_Bin,
+                                        negotiated_version = Version_Bin,
+                                        version_module = Module
+                                       }
+                           }),
+      %% Recurse and decrypt packet now that everything is initialized
+      quic_crypto:parse_packet(Packet, Data2);
 
     {error, unsupported} ->
-      %% Return with unsupported if not supported.
-      {error, unsupported};
-
+      %% Return with unsupported if not supported.     
+      {unsupported, Data1};
+    
     Other ->
       ?DBG("Error checking header version: ~p~n", [Other]),
       Other

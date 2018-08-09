@@ -297,7 +297,7 @@ validate_tls(#quic_data{
                 offset = TLS_Offset
                } = Record) when TLS_Offset > Offset + 1 ->
   %% Missing a packet
-  {out_of_order, {TLS_Offset, Record}};
+  out_of_order;
 
 validate_tls(#quic_data{
                 crypto = #quic_crypto{
@@ -309,7 +309,7 @@ validate_tls(#quic_data{
                 offset = TLS_Offset
                } = Record) when TLS_Offset > Offset + 1 ->
   %% Missing a packet
-  {out_of_order, {TLS_Offset, Record}};
+  out_of_order;
 
 
 validate_tls(#quic_data{
@@ -783,6 +783,52 @@ form_packet(initial,
             #quic_data{
                type = client,
                init_pkt_num = IPN,
+               init_ack = Ack0,
+               crypto = #quic_crypto{
+                           client_init_iv = IV,
+                           client_init_key = Key,
+                           pkt_num_init_secret = Pkt_Num_Secret
+                          }
+              } = Data0) ->
+  %% This sends an ack of any initial packets that have not been acked yet.  
+  %% Unencrypted packet number is used for the nonce.
+  Nonce = get_nonce(IPN, IV),
+  
+  %% Add acknowledgement(s) to packet.
+  %% TODO: ack_frame function
+  {Ack_Frame, Ack} = quic_packet:to_ack_frame(Ack0),
+  
+  %% This function needs to be updated in quic_packet.
+  {ok, Header0} = quic_packet:form_header(initial, Data, byte_size(Ack_Frame)),
+  
+  
+  %% Encrypt the packet.
+  {Enc_Init, Tag} = encrypt(Padded, Client_Key, Nonce, Header),
+  
+  %% Encode the packet number using the packet_num_init_secret and AEAD Tag.
+  Enc_Pkt_Num = encrypt_pkt_num(IPN, Pkt_Num_Secret, Tag),
+  
+  %% Update Data.
+  Data = Data0#quic_data{
+           init_ack = Ack,
+           init_pkt_num = IPN + 1
+          },
+  
+  %% Remove the unencoded packet number and replace.
+  %% TODO: Adjust for variable length packet num.
+  Head_Len = byte_size(Header) - 4,
+  <<Header1:Head_Len/binary, _/binary>> = Header,
+  
+  %% Add the encoded packet number
+  Init_Packet = <<Header1/binary, Enc_Pkt_Num/binary,
+                  Tag/binary, Enc_Init/binary>>,
+
+  {ok, Data, Packet};
+  
+form_packet(client_hello,
+            #quic_data{
+               type = client,
+               init_pkt_num = IPN,
                crypto = #quic_crypto{
                            init_offsets = {Send, _Recv},
                            client_init_iv = Client_IV,
@@ -860,7 +906,7 @@ form_packet(initial,
 
   {ok, Data, Init_Packet};  
 
-form_packet(initial,
+form_packet(server_hello,
             #quic_data{
                type = server,
                init_ack = Ack0,
@@ -1229,12 +1275,49 @@ form_packet(finished,
   {ok, Data, <<Header/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>}.
 
 
--spec form_packet(early_data, Data, Frames) -> {ok, Data, Packet} when
+-spec form_packet(Type, Data, Frames) -> {ok, Data, Packet} when
+    Type :: short | early_data,
     Data :: #quic_data{},
-    Frames :: [quic_frames()],
+    Frames :: [quic_frame()],
     Packet :: binary().
-%% Forms early 0-RTT data for the client.
 
+form_packet(short,
+            #quic_data{
+               type = client,
+               app_ack = Ack0,
+               app_pkt_num = Pkt_Num,
+               crypto = #quic_crypto{
+                           pkt_num_app_secret = Pkt_Num_Secret,
+                           client_ap_iv = IV,
+                           client_ap_key = Key
+                          }
+              } = Data0,
+            Frames) ->
+
+  Nonce = get_nonce(Pkt_Num, IV),
+  
+  {ok, Data, Header, Payload} = 
+    quic_packet:form_packet(short, Data0, Frames),
+  
+  %% Encrypt the Packet
+  {Enc_Frames, Tag} = encrypt(Payload, Key, Nonce, Header0),
+  
+  %% Encode the packet number
+  Enc_Pkt_Num = encrypt_pkt_num(HPN, Pkt_Num_Secret, Tag),
+
+  Data = Data0#quic_data{
+           init_pkt_num = HPN + 1,
+           init_ack = Ack
+          },
+  
+  %% Replace the packet number
+  %% TODO: change to variable size packet num.
+  Head_Len = byte_size(Header0) - 4,
+  <<Header:Head_Len/binary, _Rest/binary>> = Header0,
+  
+  {ok, Data, <<Header/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>};
+
+%% Forms early 0-RTT data for the client.
 form_packet(early_data,
             #quic_data{
                type = client,
@@ -1267,7 +1350,8 @@ form_packet(early_data,
           },
   
   %% Replace the packet number
-  Head_Len = byte_size(Header0),
+  %% TODO: variable length packet num.
+  Head_Len = byte_size(Header0) - 4,
   <<Header:Head_Len/binary, _Rest/binary>> = Header0,
   
   {ok, Data, <<Header/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>}.
@@ -1286,7 +1370,7 @@ form_packet(early_data,
     Packet :: {Packet_Type, Data, Frames, #tls_record{}} |
               %% When we know how to decrypt it and when we don't.
               {Packet_Type, Raw_Packet},
-    Frames :: [#quic_frame{}],
+    Frames :: [quic_frame()],
     Packet_Type :: initial |
                    handshake |
                    protected |
@@ -1295,22 +1379,17 @@ form_packet(early_data,
     Version :: version(),
     Reason :: gen_quic:errors().
 
-parse_packet(<<1:1, 16#1f:7, _Rest/bits>> = Raw_Packet0,
+%% This needs to be better. Probably not in quic_packet.
+parse_packet(Raw_Packet,
              #quic_data{
                 type = server,
                 crypto = #quic_crypto{
                             state = undefined
-                           } 
-               }= Data0) ->
-  %% The first initial packet from the client is received.
-  case quic_packet:parse_header(Raw_Packet0, Data0) of
-    {ok, Data1, Raw_Packet} ->
-      %% Valid header info received.
-      %% Initialize the server-side crypto
-      Data2 = crypto_init(Data1),
-      parse_packet(Raw_Packet0, Data2);
-    { ->
-      
+                           }
+               }= Data) ->
+  %% Pass it through to quic_packet to parse
+  %% There's no crypto state to decrypt it, client's first initial packet.
+  quic_packet:parse_packet(Raw_Packet, Data);
 
 parse_packet(<<1:1, Type:7, _Rest/bits>> = Raw_Packet, 
              #quic_data{
