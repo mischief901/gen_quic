@@ -2,14 +2,22 @@
 %%% @author alex <alex@alex-Lenovo>
 %%% @copyright (C) 2018, alex
 %%% @doc
-%%%  Needs updating to use #quic_data instead of #quic_conn
+%%%  This module splits the packet into a list of tuples with header
+%%%  information and encoded frames. It also checks to see if the version
+%%%  is supported and sets the version specific module for parsing and
+%%%  forming frames.
+%%%
+%%%  The parse_header/2 function returns a list due to the possibility of
+%%%  coalesced packets.
 %%% @end
 %%% Created : 16 May 2018 by alex <alex@alex-Lenovo>
 %%%-------------------------------------------------------------------
 -module(quic_packet).
 
 %% API
--export([parse_packet/2, form_packet/2]).
+-export([parse_header/2]).
+%%-export([parse_frames/2]).
+-export([form_packet/2, form_packet/3]).
 -export([form_header/3]).
 
 -include("quic_headers.hrl").
@@ -18,127 +26,243 @@
 %%% API
 %%%===================================================================
 
-%% Checks if it is a version negotiation packet. If not, looks up version in quic_vxx
-%% If supported, version module parses packet. 
-%% Otherwise, returns {error, unsupported}.
-
-
--spec parse_packet(Raw_Packet, Data) -> Result when
+%% Splits the packet into a list of tuples with header information and
+%% encoded frames.
+-spec parse_header(Raw_Packet, Data) -> Result when
     Raw_Packet :: binary(),
     Data :: #quic_data{},
-    Result :: {ok, Data, Frames, TLS_Frames} | 
-              {vx_neg, Versions} |
-              {error, Reason},
-    Frames :: [quic_frame()],
-    TLS_Frames :: #tls_record{},
-    Versions :: [version()],
-    Reason :: gen_quic:errors().
+    Result :: [Packet] |
+              {error, Reason} |
+              not_quic,
+    Reason :: gen_quic:errors(),
+    Packet :: {initial, Data, Header, Pkt_Num, Reset_Token, Encoded_Frames} |
+              {Other_Type, Data, Header, Pkt_Num, Encoded_Frames},
+    Other_Type :: early_data |
+                  handshake |
+                  short |
+                  vx_neg |
+                  retry,
+    Pkt_Num :: binary(),
+    Reset_Token :: binary(),
+    Encoded_Frames :: binary(),
+    Header :: binary().
 
-%% Version Negotiation Packet is not version specific.
-parse_packet(<<1:1, _Type:7, 0:32, DCIL:4, SCIL:4,
+parse_header(<<1:1, _Type:7, 0:32, DCIL:4, SCIL:4,
                Rest/binary>>,
              #quic_data{
                 conn = #quic_conn{
                           src_conn_ID = Dest_Conn,
                           dest_conn_ID = Src_Conn
                          }
-               }) ->
+               } = Data) ->
+  %% Version Negotiation Packet
   %% Make sure the packet has the correct source and destination connection id's.
-  Dest_Len = from_conn_length(DCIL),
-  Src_Len = from_conn_length(SCIL),
+  Dest_Len = conn_length(DCIL),
+  Src_Len = conn_length(SCIL),
   
   <<Dest:Dest_Len/binary, Src:Src_Len/binary, Vx_Frames/binary>> = Rest,
 
   case {Dest, Src} of
     {Dest_Conn, Src_Conn} ->
       %% Both match.
-      %% All version frames are 32 bits.
-      Versions = [ <<Vx/binary>> || <<Vx:32>> <= Vx_Frames ],
-      
-      {vx_neg, Versions};
+      %% No header or packet number info is relevant.
+      [{vx_neg, Data, <<>>, <<>>, Vx_Frames}];
     
     _Other ->
       {error, protocol_violation}
   end;
 
-%% First initial packet received by server.
-parse_packet(<<1:1, 16#1f:7, Version_Bin:32, DCIL:4, SCIL:4, 
-               Rest/binary>> = Packet,
+parse_header(<<1:1, 16#7e:7, Version:4/binary, DCIL:4, SCIL:4, Rest/binary>>,
              #quic_data{
-                type = server,
-                conn = #quic_conn{
-                          src_conn_ID = undefined,
-                          dest_conn_ID = undefined
-                         } = Conn,
                 version = #quic_version{
-                             version_module = undefined
-                            } = Vx,
-                crypto = #quic_crypto{
-                            state = undefined
-                           }
+                             initial_version = Version
+                            },
+                conn = #quic_conn{
+                          dest_conn_ID = Dest_Conn,
+                          src_conn_ID = Src_Conn
+                         } = Conn0
                } = Data0) ->
-  %% This is the first packet the server received.
-  %% Need to finish parsing header though.
-  Dest_Len = from_conn_length(DCIL),
-  Src_Len = from_conn_length(SCIL),
+  %% Retry packet
+  %% First get the DCIL and SCIL lengths
+  Dest_Len = conn_length(DCIL),
+  Src_Len = conn_length(SCIL),
+  Old_Dest_Len = byte_size(Dest_Conn),
+
+  case Rest of
+    <<New_Dest_Conn:Dest_Len/binary, Src_Conn:Src_Len/binary, 
+      Old_Dest_Len:8, Dest_Conn:Old_Dest_Len/binary, Retry_Token/binary>> ->
+      
+      Data = Data0#quic_data{
+               conn = Conn0#quic_conn{
+                        dest_conn_ID = New_Dest_Conn
+                       },
+               retry_token = Retry_Token
+              },
+      %% Header, Packet_Number, and Frames are not needed.
+      [{retry, Data, <<>>, <<>>, <<>>}];
+   
+    _Other ->
+      {error, protocol_violation}
+  end;
+
+parse_header(<<1:1, 16#7f:7, Version:4/binary, DCIL:4, SCIL:4,
+               Rest/binary>>, 
+             #quic_data{
+                conn = #quic_conn{
+                          dest_conn_ID = undefined,
+                          src_conn_ID = undefined
+                         } = Conn0
+               } = Data0) ->
+  %% Initial packet first packet received by server.
+  Dest_Len = conn_length(DCIL),
+  Src_Len = conn_length(SCIL),
+
+  <<Dest_Conn:Dest_Len/binary, Src_Conn:Src_Len/binary, 
+    Payload_Flag:2, Rest1/bits>> = Rest,
   
-  <<Dest_Conn:Dest_Len/binary, Src_Conn:Src_Len/binary, _/binary>> = Rest,
-  
-  Data1 = Data#quic_data{
+  Data1 = Data0#quic_data{
             conn = Conn0#quic_conn{
-                     src_conn_ID = Dest_Conn,
-                     dest_conn_ID = Src_Conn
+                     dest_conn_ID = Src_Conn,
+                     src_conn_ID = Dest_Conn
                     }
            },
 
-  %% Lookup version and see if supported.
-  case quic_vxx:supported(Version_Bin) of
-    {ok, {Module, Version_Bin}} ->
-      %% Version is supported for set it.
-      Data2 = crypto_init(Data1#quic_data{
-                            version = Vx#quic_version{
-                                        initial_version = Version_Bin,
-                                        negotiated_version = Version_Bin,
-                                        version_module = Module
-                                       }
-                           }),
-      %% Recurse and decrypt packet now that everything is initialized
-      quic_crypto:parse_packet(Packet, Data2);
+  case quic_vxx:supported(Version) of
+    {ok, {Module, Version}} ->
+
+      Data2 = Data1#quic_data{
+                version = #quic_version{
+                             initial_version = Version,
+                             negotiated_version = Version
+                            },
+                vx_module = Module
+               },
+
+      Payload_Length = from_var_length(Payload_Flag),
+      
+      <<Length:Payload_Length/unit:8, Pkt_Num:4/binary, 
+        Retry_Token_Flag:2, Rest2/bits>> = Rest1,
+      
+      Token_Length = from_var_length(Retry_Token_Flag),
+
+      %% Payload_Length is actually 16 bytes greater due to the AEAD Tag.
+      <<Token_Size:Token_Length, Retry_Token:Token_Size/binary, Tag:16/binary,
+        Payload:Length/binary>> = Rest2,
+      
+      Header = <<1:1, 16#7f:7, Version/binary, DCIL:4, SCIL:4, 
+                 Dest_Conn/binary, Src_Conn/binary, Payload_Flag:2, 
+                 Length:Payload_Length>>,
+      
+      [{initial, Data2, Header, Pkt_Num, Retry_Token, <<Tag/binary, Payload/binary>>}];
 
     {error, unsupported} ->
-      %% Return with unsupported if not supported.     
-      {unsupported, Data1};
-    
-    Other ->
-      ?DBG("Error checking header version: ~p~n", [Other]),
-      Other
+      {unsupported, Data1}
   end;
 
-%% Short header. DCID, SCID, version, and Module are already known.
-parse_packet(<<0:1, _Rest/binary>> = Packet, 
-             #quic_conn{
-                version_mod = Module,
-                version = Vx,
-                src_conn_ID = DCID,
-                dest_conn_ID = SCID
-               }) ->
+parse_header(<<1:1, 16#7f:7, Version:4/binary, DCIL:4, SCIL:4,
+               Rest/binary>>,
+             #quic_data{
+                conn = #quic_conn{
+                          dest_conn_ID = Src_Conn,
+                          src_conn_ID = Dest_Conn
+                         },
+                version = #quic_version{
+                             initial_version = Version
+                            }
+               } = Data) ->
+  %% Initial packet when stuff is known.
+  Dest_Len = conn_length(DCIL),
+  Src_Len = conn_length(SCIL),
 
-  Packet_Info = #quic_packet{
-                   version = Vx,
-                   src_conn_ID_len = byte_size(SCID),
-                   src_conn_ID = SCID,
-                   dest_conn_ID_len = byte_size(DCID),
-                   dest_conn_ID = DCID,
-                   type = short,
-                   long = 0
-                  },
+  case Rest of
+    <<Dest_Conn:Dest_Len/binary, Src_Conn:Src_Len/binary, 
+      Payload_Flag:2, Rest1/bits>> ->
+      %% The connection id's match.
+      
+      Payload_Length = from_var_length(Payload_Flag),
+      %% Payload_Length is actually 16 bytes greater due to the AEAD Tag.
+      %% Retry_Token is a single byte of 0 in all other initial packet cases.
+      
+      <<Length:Payload_Length/unit:8, Pkt_Num:4/binary, 0:8, Tag:16/binary,
+        Payload:Length/binary, Other/binary>> = Rest1,
+      
+      Header = <<1:1, 16#7f:7, Version/binary, DCIL:4, SCIL:4, 
+                 Dest_Conn/binary, Src_Conn/binary, Payload_Flag:2, 
+                 Length:Payload_Length>>,
+      
+      [{initial, Data, Header, Pkt_Num, <<0:8>>, <<Tag/binary, Payload/binary>>} | 
+       parse_header(Other, Data)];
+    
+    _Other ->
+      {invalid, protocol_violation}
+  end;
 
-  %% Call the parser in the known version module.
-  Module:parse_packet(Packet, Packet_Info);
+parse_header(<<1:1, Type:7, Version:4/binary, DCIL:4, SCIL:4,
+               Rest/binary>>,
+             #quic_data{
+                conn = #quic_conn{
+                          dest_conn_ID = Src_Conn,
+                          src_conn_ID = Dest_Conn
+                         },
+                version = #quic_version{
+                             initial_version = Version
+                            }
+               } = Data) ->
+  %% Other long packets.
+  Dest_Len = conn_length(DCIL),
+  Src_Len = conn_length(SCIL),
+  
+  Type_Atom = 
+    case Type of
+      16#7e ->
+        retry;
+      16#7d ->
+        handshake;
+      16#7c ->
+        early_data
+    end,
 
-parse_packet(Other, _Unused) ->
-  ?DBG("Incorrect format: ~p~n", [Other]),
-  {error, badarg}.
+  case Rest of
+    <<Dest_Conn:Dest_Len/binary, Src_Conn:Src_Len/binary, 
+      Payload_Flag:2, Rest1/bits>> ->
+      %% The connection id's match.
+      
+      Payload_Length = from_var_length(Payload_Flag),
+      %% Payload_Length is actually 16 bytes greater due to the AEAD Tag.
+      %% Retry_Token is a single byte of 0 in all other initial packet cases.
+      
+      <<Length:Payload_Length/unit:8, Pkt_Num:4/binary, Tag:16/binary,
+        Payload:Length/binary, Other/binary>> = Rest1,
+      
+      Header = <<1:1, 16#7f:7, Version/binary, DCIL:4, SCIL:4, 
+                 Dest_Conn/binary, Src_Conn/binary, Payload_Flag:2, 
+                 Length:Payload_Length>>,
+      
+      [{Type_Atom, Data, Header, Pkt_Num, <<Tag/binary, Payload/binary>>} | 
+       parse_header(Other, Data)];
+    
+    _Other ->
+      {invalid, protocol_violation}
+  end;
+
+parse_header(<<0:1, _Rest/binary>> = Packet,
+             #quic_data{
+                conn = #quic_conn{
+                          src_conn_ID = Dest_Conn
+                         }
+               } = Data) ->
+  Header_Len = conn_length(Dest_Conn) + 1,
+  %% 1 for the one byte type field.
+  <<Header:Header_Len/binary, Pkt_Num:4/binary, Payload/binary>> = Packet,
+
+  %% Short packets have to be the last of any coalesced packet.
+  [{short, Data, Header, Pkt_Num, Payload}];
+
+parse_header(<<>>, _Data) ->
+  %% Base Case for splitting the packets up.
+  [].
+
+
 
 
 
@@ -159,7 +283,7 @@ parse_packet(Other, _Unused) ->
 form_packet(vx_neg, 
             #quic_data{
                version = #quic_version{
-                            supported_version = Versions
+                            supported_versions = Versions
                            }
               } = Data0) ->
   
@@ -195,9 +319,9 @@ form_packet(retry,
             handshake |
             short,
     Data :: #quic_data{},
-    Frames :: [quic_frames()],
+    Frames :: [quic_frame()],
     Result :: {ok, Data, Payload} | {error, Reason},
-    Header :: binary(),
+%%    Header :: binary(),
     Payload :: binary(),
     Reason :: gen_quic:errors().
 
@@ -208,18 +332,18 @@ form_packet(retry,
 form_packet(Type,
             #quic_data{
                version = #quic_version{
-                            negotiated_version = Version,
-                            version_module = undefined
-                           } = Vx,
+                            negotiated_version = Version
+                           },
+               vx_module = undefined
               } = Data0,
             Frames) ->
   case quic_vxx:supported(Version) of
     {ok, {Module, Version}} ->
 
       Data = Data0#quic_data{
-               version = Vx#quic_version{version_module = Module}
+               vx_module = Module
               },
-
+      
       Module:form_packet(Type, Data, Frames);
 
     {error, unsupported} ->
@@ -234,9 +358,7 @@ form_packet(Type,
 %% The version_module is already known at this point so we don't need to look it up
 form_packet(Type,
             #quic_data{
-               version = #quic_version{
-                            version_module = Module
-                           } = Vx,
+               vx_module = Module
               } = Data,
             Frames) ->
   Module:form_packet(Type, Data, Frames).
@@ -247,7 +369,7 @@ form_packet(Type,
             early_data |
             handshake |
             short,
-    Data :: #quic_data{],
+    Data :: #quic_data{},
     Payload_Size :: non_neg_integer(),
     Header :: binary().
 
@@ -255,7 +377,7 @@ form_header(initial,
             #quic_data{
                conn = #quic_conn{
                          src_conn_ID = Src_ID,
-                         dest_conn_ID = Dest_ID,
+                         dest_conn_ID = Dest_ID
                         },
                version = #quic_version{
                             negotiated_version = Version
@@ -274,13 +396,13 @@ form_header(initial,
 
   <<1:1, 16#7f:7, Version:32, Dest_Conn_Len:4, Src_Conn_Len:4,
     Dest_ID/binary, Src_ID/binary, Length/binary, IPN:4/unit:8,
-    Reset_Token/binary>>;
+    Retry_Token/binary>>;
 
 form_header(handshake,
             #quic_data{
                conn = #quic_conn{
                          src_conn_ID = Src_ID,
-                         dest_conn_ID = Dest_ID,
+                         dest_conn_ID = Dest_ID
                         },
                version = #quic_version{
                             negotiated_version = Version
@@ -302,7 +424,7 @@ form_header(early_data,
             #quic_data{
                conn = #quic_conn{
                          src_conn_ID = Src_ID,
-                         dest_conn_ID = Dest_ID,
+                         dest_conn_ID = Dest_ID
                         },
                version = #quic_version{
                             negotiated_version = Version
@@ -325,7 +447,7 @@ form_header(early_data,
 form_header(short,
             #quic_data{
                conn = #quic_conn{
-                         dest_conn_ID = Dest_ID,
+                         dest_conn_ID = Dest_ID
                         },
                app_pkt_num = APN
               },
@@ -362,4 +484,12 @@ to_var_length(Num) when Num < 1073741823 ->
 to_var_length(Num) ->
   <<3:3, Num:62>>.
 
+
+from_var_length(Flag) ->
+  case Flag of
+    0 -> 6;
+    1 -> 14;
+    2 -> 30;
+    3 -> 62
+  end.
   

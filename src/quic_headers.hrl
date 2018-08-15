@@ -39,6 +39,8 @@
          server_init_key     :: binary(),
          server_init_iv      :: binary(),
          handshake_secret    :: binary(),
+         client_early_key    :: binary(),
+         client_early_iv     :: binary(),
          pkt_num_handshake_secret :: binary(),
          client_handshake_secret  :: binary(),
          server_handshake_secret  :: binary(),

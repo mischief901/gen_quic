@@ -1,0 +1,22 @@
+
+Notes for later:
+Switching quic_parser_vx_1 to fit with current model:
+- Change #quic_frame and #quic_stream records to maps (delete the quic_frame and quic_stream really)
+  + Define field names alongside those in quic_conn:handle_frame/2.
+  
+- Change to start parsing frames instead of header as well.
+
+
+Switching quic_encoder_vx_1 to fit with current model:
+- Look into reverting back to using quic_frame:to_frame and then just using list_to_binary on final result.
+  + Define field names alongside those in quic_conn:handle_frame/2 and parser.
+
+
+Ack support:
+- Look into using an orddict or gbtree.
+
+- Need to send acks a couple times in different packets to ensure delivery as fast as possible.
+  + Also cover repeat acks on receiving side.
+  
+- Have a separate ack_delay for each level of acks that were sent.
+

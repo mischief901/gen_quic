@@ -24,6 +24,10 @@
 -export([controlling_process/2]).
 -export([close/1]).
 
+%% Internal shared function for quic_client and quic_server
+-export([handle_frame/2]).
+-export([send_and_form_packet/2]).
+
 -include("quic_headers.hrl").
 
 
@@ -184,3 +188,136 @@ close(Socket) ->
 
 via(Socket) ->
   {via, quic_registry, Socket}.
+
+
+%% This function should behave the exact same across both quic_server and quic_client.
+-spec handle_frame(Frame, Data) -> Data when
+    Data :: #quic_data{},
+    Frame :: quic_frame().
+
+handle_frame(#{
+               type := stream_data,
+               stream_id := Stream_ID
+              } = Frame,
+             #quic_data{
+                conn = #quic_conn{
+                          socket = Socket
+                         }
+               } = Data) ->
+  %% Cast the Stream Frame to the Stream gen_server denoted by {Socket, Stream_ID}.
+  gen_server:cast(via({Socket, Stream_ID}), {recv, Frame}),
+  Data;
+
+handle_frame(#{
+               type := stream_open,
+               stream_id := Stream_ID,
+               stream_type := Type
+              } = Frame,
+             #quic_data{
+                conn = #quic_conn{
+                          socket = Socket,
+                          owner = Owner
+                         }
+               } = Data) ->
+  %% Spawn a new quic_stream gen_server and send a message to the owner.
+  %% TODO: Add checks to see if a stream can be opened or if limit has been reached.
+  %% TODO: Move to having a supervisor:spawn_child system.
+  {ok, _Pid} = gen_server:start(via({Socket, Stream_ID}), quic_stream, 
+                                [Owner, Socket, Frame], []),
+
+  Owner ! {stream_open, {Socket, Stream_ID}, Type},
+  Data;
+
+handle_frame(#{} = Frame, #quic_data{} = Data) ->
+
+  Data.
+    
+
+send_and_form_packet(Pkt_Type,
+                     #quic_data{
+                        window_timeout = undefined
+                        } = Data) ->
+  %% Timeout window is not set yet. Set it to the default 100 milliseconds.
+  %% "If no previous RTT is available, or if the network changes, the 
+  %%  initial RTT SHOULD be set to 100ms."
+  %% from QUIC Recovery
+  send_and_form_packet(Pkt_Type, 
+                       Data#quic_data{
+                         window_timeout = #{rto => 100}
+                        });
+
+send_and_form_packet({short, Frames} = Pkt_Type,
+                     #quic_data{
+                        window_timeout = #{rto := Timeout} = Win,
+                        app_pkt_num = Pkt_Num
+                       } = Data0) ->
+
+  {ok, #quic_data{
+          conn = #quic_conn{
+                    socket = Socket,
+                    address = IP,
+                    port = Port}
+         } = Data1, Packet} = quic_crypto:form_packet(short, Data0, Frames),
+  
+  ok = prim_inet:sendto(Socket, IP, Port, Packet),
+
+  %% We want to set a re-send timer to resend the packet if no ack
+  %% has been received yet.
+  Timer_Ref = erlang:start_timer(Timeout, self(), {Pkt_Type, Pkt_Num, Timeout}),
+  %% And update the window_timeout map to include it as well.
+  %% This allows us to cancel the timer when an Ack is received.
+  Data1#quic_data{window_timeout = Win#{Timer_Ref => {Pkt_Type, Pkt_Num, Timeout}}};
+
+send_and_form_packet({ealry_data, Frames} = Pkt_Type,
+                     #quic_data{
+                        window_timeout = #{rto := Timeout} = Win,
+                        init_pkt_num = Pkt_Num
+                       } = Data0) ->
+
+  {ok, #quic_data{
+          conn = #quic_conn{
+                    socket = Socket,
+                    address = IP,
+                    port = Port}
+         } = Data1, 
+   Packet} = quic_crypto:form_packet(early_data, Data0, Frames),
+  
+  ok = prim_inet:sendto(Socket, IP, Port, Packet),
+
+  %% We want to set a re-send timer to resend the packet if no ack
+  %% has been received yet.
+  Timer_Ref = erlang:start_timer(Timeout, self(), {Pkt_Type, Pkt_Num, Timeout}),
+  %% And update the window_timeout map to include it as well.
+  %% This allows us to cancel the timer when an Ack is received.
+  Data1#quic_data{window_timeout = Win#{Timer_Ref => {Pkt_Type, Pkt_Num, Timeout}}};
+
+send_and_form_packet(Pkt_Type, 
+                     #quic_data{
+                        window_timeout = #{rto := Timeout} = Win,
+                        init_pkt_num = IPN,
+                        hand_pkt_num = HPN
+                       } = Data0) ->
+  %% Forms the packet and sends it.
+  %% Mostly just a wrapper function around these two functions.
+  {ok, #quic_data{
+          conn = #quic_conn{
+                    socket = Socket,
+                    address = IP,
+                    port = Port}
+         } = Data1, Packet} = quic_crypto:form_packet(Pkt_Type, Data0),
+  
+  ok = prim_inet:sendto(Socket, IP, Port, Packet),
+
+  Pkt_Num = 
+    case Pkt_Type of
+      initial -> IPN;
+      _Other -> HPN
+    end,
+
+  %% We want to set a re-send timer to resend the packet if no ack
+  %% has been received yet.
+  Timer_Ref = erlang:start_timer(Timeout, self(), {Pkt_Type, Pkt_Num, Timeout}),
+  %% And update the window_timeout map to include it as well.
+  %% This allows us to cancel the timer when an Ack is received.
+  Data1#quic_data{window_timeout = Win#{Timer_Ref => {Pkt_Type, Pkt_Num, Timeout}}}.
+
