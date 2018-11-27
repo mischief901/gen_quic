@@ -26,13 +26,17 @@
 -module(quic_crypto).
 
 -export([default_params/2]).
--export([form_packet/2, form_packet/3]).
--export([parse_packet/2]).
+-export([encrypt_packet/5]).
+-export([decrypt_packet/3]).
+%% Decouple the quic_crypto and quic_packet modules. similar to encrypt_packet/4
+%% -export([parse_packet/2]).
 -export([parse_crypto_frame/1]).
 -export([crypto_init/1]).
 -export([rekey/1]).
 -export([validate_tls/2]).
--export([decrypt_and_parse/1]).
+-export([add_transcript/2]).
+%% -export([decrypt_and_parse/1]).
+-export([form_frame/2]).
 
 -include("quic_headers.hrl").
 
@@ -57,15 +61,15 @@ quic_params() ->
    migration
   ].
 
--spec default_params(Type, Options) -> Result when
-    Type :: client | server,
-    Options :: gen_quic:options(),
-    Result :: {ok, #quic_params{}} | {error, gen_quic:errors()}.
+-spec default_params(Data, Options) -> Result when
+    Data :: #quic_data{},
+    Options :: [gen_quic:option()],
+    Result :: {ok, Data} | {error, gen_quic:error()}.
 
-default_params(client, Options) ->
+default_params(#quic_data{type = client} = Data0, Options) ->
   %% Fold over the quic parameters list and any that exist in Options to a
   %% #quic_params{} record.
-
+  
   Params = lists:foldl(fun(Item, Param) ->
                            case lists:keyfind(Item, 1, Options) of
                              false ->
@@ -74,9 +78,9 @@ default_params(client, Options) ->
                                add_param(Param, Item, Value)
                            end
                        end, #quic_params{}, quic_params()),
-  {ok, Params};
+  {ok, Data0#quic_data{params = Params}};
 
-default_params(server, Options) ->
+default_params(#quic_data{type = server} = Data0, Options) ->
   %% Fold over the quic parameters list and any that exist in Options to a
   %% #quic_params{} record.
 
@@ -89,7 +93,7 @@ default_params(server, Options) ->
                            end
                        end, #quic_params{}, 
                        [reset_token, preferred_address | quic_params()]),
-  {ok, Params}.
+  {ok, Data0#quic_data{params = Params}}.
 
 %% This function exists because records are not dynamic and as such values cannot
 %% be added in the function above. Probably will move to maps at some point.
@@ -125,8 +129,9 @@ add_param(Param, migration, Bool) ->
   Param#quic_params{migration = Bool}.
 
 
--spec crypto_init(Data) -> Data when
-    Data :: #quic_data{}.
+-spec crypto_init(Data) -> Result when
+    Data :: #quic_data{},
+    Result :: {ok, Data}.
 %% Initializes the client and server initial keying materials
 crypto_init(#quic_data{
                type = server,
@@ -145,9 +150,10 @@ crypto_init(#quic_data{
   set_initial(Data, Conn_ID).
 
 
--spec set_initial(Data, Conn_ID) -> Data when
+-spec set_initial(Data, Conn_ID) -> Result when
     Data :: #quic_data{},
-    Conn_ID :: binary().
+    Conn_ID :: binary(),
+    Result :: {ok, Data}.
 
 %% Sets the initial secrets for both clients and servers.
 set_initial(#quic_data{
@@ -170,8 +176,9 @@ set_initial(#quic_data{
             },
   set_pub_key(Data#quic_data{crypto = Crypto}).
 
--spec set_pub_key(Data) -> Data when
-    Data :: #quic_data{}.
+-spec set_pub_key(Data) -> Result when
+    Data :: #quic_data{},
+    Result :: {ok, Data}.
 %% sets the public key from the cert or generates an ephemeral public/private key pair.
 %% TODO: Expand to other key groups
 set_pub_key(#quic_data{
@@ -184,7 +191,7 @@ set_pub_key(#quic_data{
   %% The cert private key is not set so generate an ephemeral pair of keys.
   %% This can only happen with clients, but for now allowed for either
   {Pub_Key, Priv_Key} = gen_key(),
-  Data0#quic_data{crypto = Crypto0#quic_crypto{pub_key = Pub_Key, priv_key = Priv_Key}};
+  {ok, Data0#quic_data{crypto = Crypto0#quic_crypto{pub_key = Pub_Key, priv_key = Priv_Key}}};
 
 set_pub_key(#quic_data{
                crypto = #quic_crypto{
@@ -194,11 +201,11 @@ set_pub_key(#quic_data{
               } = Data0) ->
   %% The cert key is set so generate a public key from the private key.
   {Pub_Key, Priv_Key} = gen_key(Priv_Key),
-  Data0#quic_data{crypto = Crypto0#quic_crypto{pub_key = Pub_Key}};
+  {ok, Data0#quic_data{crypto = Crypto0#quic_crypto{pub_key = Pub_Key}}};
 
 set_pub_key(Data) ->
   %% The public key is already defined, so it doesn't need to be set.
-  Data.
+  {ok, Data}.
 
 
 -spec validate_tls(Data, TLS_Info) -> Result when
@@ -206,6 +213,7 @@ set_pub_key(Data) ->
     TLS_Info :: #tls_record{},
     Result :: {valid, Data} | 
               {incomplete, Data} |
+              out_of_order |
               {invalid, Reason},
     Reason :: term().
 %% TODO: Update error Reason type to something more descriptive.
@@ -374,7 +382,7 @@ validate_tls(#quic_data{
       %% TODO: Needs better error.
       {invalid, no_group};
     
-    {TLS_Version, Cipher, Sign_Alg, Group} ->
+    {[TLS_Version], Cipher, Sign_Alg, Group} ->
       %% Success. First from each that is supported is chosen in the valid_* funs.
       %% Need to check for key_share.
       %% TODO: Add check for empty key_share.
@@ -413,12 +421,11 @@ validate_tls(#quic_data{
                             init_offsets = {_Send, _Recv}
                            } = Crypto0
                } = Data0,
-             
              #tls_record{
                 legacy_version = 16#0303,
                 %% Must be 0x0303
                 type = server_hello,
-                tls_supported_versions = 16#0304,
+                tls_supported_versions = [16#0304],
                 %% The tls version must be supported.
                 cipher_suites = Ciphers,
                 key_share = [{Group, Pub_Key}],
@@ -508,7 +515,6 @@ validate_tls(#quic_data{
                             handshake_offsets = {_Send, _Recv}
                            } = Crypto0
                } = Data0,
-
              #tls_record{
                 type = certificate,
                 root_cert = Trusted_Cert,
@@ -664,7 +670,7 @@ validate_tls(#quic_data{
             
       Data = Data0#quic_data{
                crypto = Crypto0#quic_crypto{
-                          transcript = undefined,
+                          transcript = <<>>,
                           %% Not needed anymore. If resumption master secret was a goal
                           %% This would be needed and updated.
                           handshake_offsets = {_Send, TLS_Offset}
@@ -673,12 +679,46 @@ validate_tls(#quic_data{
 
     _Other ->
       {invalid, finished}
-  end.
-
-
+  end.                
 %% Maybe add a finished state to this for the fin verify data.
 
--spec rekey(Data) -> Data when
+
+-spec add_transcript(Crypto_Info, Data) -> {ok, Data} when
+    Data :: #quic_data{},
+    Crypto_Info :: {Crypto_Type, Offset, Crypto_Bin},
+    Crypto_Type :: client_hello |
+                   server_hello |
+                   encrypted_exts |
+                   certificate |
+                   cert_verify |
+                   finished,
+    Offset :: non_neg_integer(),
+    Crypto_Bin :: binary().
+
+add_transcript({Crypto_Type, Offset, Bin},
+               #quic_data{crypto =
+                            #quic_crypto{init_offsets = {Init_Send, Init_Recv},
+                                         handshake_offsets = {Hand_Send, Hand_Recv},
+                                         transcript = Transcript
+                                        } = Crypto0
+                         } = Data0) ->
+  Size = byte_size(Bin),
+  case Crypto_Type of
+    Init when (Init =:= client_hello orelse
+               Init =:= server_hello)
+              andalso Offset =:= Init_Send ->
+      {ok, Data0#quic_data{crypto = 
+                             Crypto0#quic_crypto{
+                               init_offsets = {Init_Send + Size, Init_Recv},
+                               transcript = <<Transcript/binary, Bin/binary>>}}};
+    _ when Offset =:= Hand_Send ->
+      {ok, Data0#quic_data{crypto =
+                             Crypto0#quic_crypto{
+                               handshake_offsets = {Hand_Send + Size, Hand_Recv},
+                               transcript = <<Transcript/binary, Bin/binary>>}}}
+  end.
+      
+-spec rekey(Data) -> {ok, Data} when
     Data :: #quic_data{}.
 
 %% This clause rekeys the server/client to the handshake level
@@ -701,23 +741,23 @@ rekey(#quic_data{
 
   Client_HS_Secret = derive_secret(client_hs, HS_Secret, Trans_Hash),
   Server_HS_Secret = derive_secret(server_hs, HS_Secret, Trans_Hash),
-  Pkt_Num_HS_Secret = derive_secret(pkt_num, HS_Secret, Trans_Hash),
+  Pkt_Num_HS_Secret = derive_secret(packet_num, HS_Secret, Trans_Hash),
   
   {Client_Key, Client_IV} = expand(keys, Client_HS_Secret),
   {Server_Key, Server_IV} = expand(keys, Server_HS_Secret),
 
-  Data0#quic_data{
-    crypto = Crypto0#quic_crypto{
-               state = handshake,
-               handshake_secret = HS_Secret,
-               client_handshake_secret = Client_HS_Secret,
-               server_handshake_secret = Server_HS_Secret,
-               client_handshake_key = Client_Key,
-               client_handshake_iv = Client_IV,
-               server_handshake_key = Server_Key,
-               server_handshake_iv = Server_IV,
-               pkt_num_handshake_secret = Pkt_Num_HS_Secret
-              }};
+  {ok, Data0#quic_data{
+         crypto = Crypto0#quic_crypto{
+                    state = handshake,
+                    handshake_secret = HS_Secret,
+                    client_handshake_secret = Client_HS_Secret,
+                    server_handshake_secret = Server_HS_Secret,
+                    client_handshake_key = Client_Key,
+                    client_handshake_iv = Client_IV,
+                    server_handshake_key = Server_Key,
+                    server_handshake_iv = Server_IV,
+                    pkt_num_handshake_secret = Pkt_Num_HS_Secret
+                   }}};
 
 %% rekey to protected encryption level.
 rekey(#quic_data{
@@ -734,874 +774,347 @@ rekey(#quic_data{
   Protected_Key = derive_secret(derived, HS_Secret, <<>>),
   Protected_Secret = extract(Protected_Key, <<0:32/unit:8>>),
 
-  Client_Protected_Secret = derive_secret(client_ap, Protected_Secret, Trans_Hash),
-  Server_Protected_Secret = derive_secret(server_ap, Protected_Secret, Trans_Hash),
+  Client_Protected_Secret = derive_secret(client_app, Protected_Secret, Trans_Hash),
+  Server_Protected_Secret = derive_secret(server_app, Protected_Secret, Trans_Hash),
   Packet_Num_Secret = derive_secret(packet_num, Protected_Secret, Trans_Hash),
   
   {Client_Key, Client_IV} = expand(keys, Client_Protected_Secret),
   {Server_Key, Server_IV} = expand(keys,Server_Protected_Secret),
 
-  Data0#quic_data{
-    crypto = Crypto0#quic_crypto{
-               state = protected,
-               protected_secret = Protected_Secret,
-               client_protected_secret = Client_Protected_Secret,
-               server_protected_secret = Server_Protected_Secret,
-               pkt_num_protected_secret = Packet_Num_Secret,
-               server_protected_key = Server_Key,
-               server_protected_iv = Server_IV,
-               client_protected_key = Client_Key,
-               client_protected_iv = Client_IV
-              }}.
+  {ok, Data0#quic_data{
+         crypto = Crypto0#quic_crypto{
+                    state = protected,
+                    protected_secret = Protected_Secret,
+                    client_protected_secret = Client_Protected_Secret,
+                    server_protected_secret = Server_Protected_Secret,
+                    pkt_num_protected_secret = Packet_Num_Secret,
+                    server_protected_key = Server_Key,
+                    server_protected_iv = Server_IV,
+                    client_protected_key = Client_Key,
+                    client_protected_iv = Client_IV
+                   }}}.
 
-      
--spec form_packet(Type, Data) -> Result when
-    Type :: initial |
-            handshake |
-            protected |
-            vx_neg |
-            retry,
+
+-spec encrypt_packet(Type, Data, Header, Payload, Pkt_Num) -> {ok, Data, Encrypted} when
+    Type :: short | early_data | initial | handshake,
     Data :: #quic_data{},
-    Result :: {ok, Data, Packet} |
-              {error, Reason},
-    Packet :: binary(),
-    Reason :: gen_quic:errors().
-%% form_packet creates an encrypted long header packet and updates the 
-%% packet number and other fields for the corresponding type in Data.
-%% form_packet/2 does not encode any additional data into frames and is
-%% only used for crypto frame transportation.
-%% form_packet/3 does allow for encoding other frame data.
-form_packet(vx_neg, Data) ->
-  %% Version Negotiation packets are not encrypted so just pass through to quic_packet.
-  quic_packet:form_packet(vx_neg, Data);
+    Header :: binary(),
+    Payload :: binary(),
+    Pkt_Num :: {non_neg_integer(), binary()},
+    Encrypted :: binary().
 
-form_packet(retry, Data) ->
-  %% retry packets are not encrypted so just pass through to quic_packet.
-  quic_packet:form_packet(retry, Data);
+encrypt_packet(initial,
+               #quic_data{
+                  type = Type,
+                  crypto = #quic_crypto{
+                              client_init_iv = C_IV,
+                              client_init_key = C_Key,
+                              server_init_iv = S_IV,
+                              server_init_key = S_Key,
+                              pkt_num_init_secret = Pkt_Num_Secret
+                             }
+                 } = Data, 
+               Header0, Unencrypted, {Pkt_Num, Pkt_Num_Bin}) ->
 
-form_packet(initial,
-            #quic_data{
-               type = client,
-               init_pkt_num = IPN,
-               init_ack = Ack0,
-               crypto = #quic_crypto{
-                           client_init_iv = IV,
-                           client_init_key = Key,
-                           pkt_num_init_secret = Pkt_Num_Secret
-                          }
-              } = Data0) ->
+  {IV, Key} = case Type of
+                server -> {S_IV, S_Key};
+                client -> {C_IV, C_Key}
+              end,
+
   %% This sends an ack of any initial packets that have not been acked yet.  
   %% Unencrypted packet number is used for the nonce.
-  Nonce = get_nonce(IPN, IV),
-  
-  %% Add acknowledgement(s) to packet.
-  %% TODO: ack_frame function
-  {Ack_Frame, Ack} = quic_packet:to_ack_frame(Ack0),
-  
-  %% This function needs to be updated in quic_packet.
-  {ok, Header0} = quic_packet:form_header(initial, Data0, byte_size(Ack_Frame)),
+  Nonce = get_nonce(IV, Pkt_Num),
   
   %% Encrypt the packet.
-  {Enc_Init, Tag} = encrypt(Ack_Frame, Key, Nonce, Header0),
+  {Encrypted, Tag} = encrypt(Unencrypted, Key, Nonce, 
+                             <<Header0/binary, Pkt_Num_Bin/binary>>),
   
   %% Encode the packet number using the packet_num_init_secret and AEAD Tag.
-  Enc_Pkt_Num = encrypt_pkt_num(IPN, Pkt_Num_Secret, Tag),
-  
-  %% Update Data.
-  Data = Data0#quic_data{
-           init_ack = Ack,
-           init_pkt_num = IPN + 1
-          },
-  
-  %% Remove the unencoded packet number and replace.
-  %% TODO: Adjust for variable length packet num.
-  Head_Len = byte_size(Header0) - 4,
-  <<Header1:Head_Len/binary, _/binary>> = Header0,
+  Enc_Pkt_Num = encrypt_pkt_num(Pkt_Num_Bin, Pkt_Num_Secret, Tag),
   
   %% Add the encoded packet number
-  Packet = <<Header1/binary, Enc_Pkt_Num/binary,
-             Tag/binary, Enc_Init/binary>>,
+  Packet = <<Header0/binary, Enc_Pkt_Num/binary, Tag/binary, Encrypted/binary>>,
 
   {ok, Data, Packet};
 
-%% TODO: Ensure that the crypto binary is only added to the transcript if not
-%%       already added for packet resends. Potentially by making transcript
-%%       a map of message to binary and just collapsing when the transcript is
-%%       used.
-form_packet(client_hello,
-            #quic_data{
-               type = client,
-               init_pkt_num = IPN,
-               crypto = #quic_crypto{
-                           init_offsets = {Send, _Recv},
-                           client_init_iv = Client_IV,
-                           client_init_key = Client_Key,
-                           pkt_num_init_secret = Pkt_Num_Secret,
-                           transcript = Transcript0
-                          } = Crypto0,
-               retry_token = Reset_Token0
-              } = Data0) ->
-  %% We first encode the client hello from #quic_data{}
-  %% This also wraps the client hello in a quic crypto frame.
-  Client_Hello = client_hello(Data0),
-  
-  %% Add the Client_Hello to the Transcript.
-  Transcript = <<Transcript0/binary, Client_Hello/binary>>,
+encrypt_packet(handshake,
+               #quic_data{
+                  type = Type,
+                  crypto = #quic_crypto{
+                              pkt_num_handshake_secret = Pkt_Num_Secret,
+                              client_handshake_iv = C_IV,
+                              client_handshake_key = C_Key,
+                              server_handshake_iv = S_IV,
+                              server_handshake_key = S_Key
+                             }
+                 } = Data,
+               Header0, Unencrypted, {Pkt_Num, Pkt_Num_Bin}) ->
 
-  %% Wrap the client_hello in a crypto frame.
-  Offset = to_var_length(Send),
-  Length = to_var_length(byte_size(Client_Hello)),
-  Crypto_Hello = <<16#18:8, Offset/binary, Length/binary, Client_Hello/binary>>,
+  {IV, Key} = case Type of
+                server -> {S_IV, S_Key};
+                client -> {C_IV, C_Key}
+              end,
 
-  %% Unencrypted packet number is used for the nonce.
-  Nonce = get_nonce(IPN, Client_IV),
+  Nonce = get_nonce(IV, Pkt_Num),
 
-  %% TODO: It makes sense to have the retry_token set as a binary when it is
-  %%       added to #quic_data{} instead of converting it here.  
-  Reset_Token =
-    case Reset_Token0 of
-      undefined ->
-        <<0:8>>;
-      
-      Token ->
-        Token_Len = to_var_length(byte_size(Token)),
-        <<Token_Len/binary, Token/binary>>
-    end,
-
-  %% TODO: Move to separate function
-  Padded = if
-             byte_size(Crypto_Hello) >= 1200 ->
-               Crypto_Hello;
-             
-             true ->
-               Pad_Len = 1200 - byte_size(Crypto_Hello),
-               <<Crypto_Hello/binary, 0:Pad_Len/unit:8>>
-           end,
-
-  %% This function needs to be updated in quic_packet.
-  {ok, Header0} = quic_packet:form_header(initial, Data0, byte_size(Padded)),
-  
-  %% Add the Reset Token to the header
-  Header = <<Header0/binary, Reset_Token/binary>>,
-  
-  %% Encrypt the packet.
-  {Enc_Init, Tag} = encrypt(Padded, Client_Key, Nonce, Header),
-  
-  %% Encode the packet number using the packet_num_init_secret and AEAD Tag.
-  Enc_Pkt_Num = encrypt_pkt_num(IPN, Pkt_Num_Secret, Tag),
-  
-  %% Update Data.
-  Data = Data0#quic_data{
-           init_pkt_num = IPN + 1,
-           crypto = Crypto0#quic_crypto{
-                      transcript = Transcript,
-                      init_offsets = {Send + byte_size(Client_Hello) + 1, _Recv}
-                     }
-          },
-  
-  %% Remove the unencoded packet number and replace.
-  Head_Len = byte_size(Header) - byte_size(Reset_Token) - 4,
-  <<Header1:Head_Len/binary, _/binary>> = Header,
-  
-  %% Add the encoded packet number and Reset Token back.
-  Init_Packet = <<Header1/binary, Enc_Pkt_Num/binary, Reset_Token/binary, 
-                  Tag/binary, Enc_Init/binary>>,
-
-  {ok, Data, Init_Packet};  
-
-form_packet(server_hello,
-            #quic_data{
-               type = server,
-               init_ack = Ack0,
-               init_pkt_num = IPN,
-               crypto = #quic_crypto{
-                           pkt_num_init_secret = Pkt_Num_Secret,
-                           server_init_iv = Init_IV,
-                           server_init_key = Init_Key,
-                           transcript = Transcript0,
-                           init_offsets = {Send, _Recv}
-                          } = Crypto0
-              } = Data0) ->
-  %% We first encode the server hello from #quic_data{}
-  %% This needs to be wrapped in a crypto frame, but first we need to add 
-  %% it to the transcript
-  Server_Hello = server_hello(Data0),
-  %% Transcript should be client_hello and server_hello messages after this.
-  Transcript = <<Transcript0/binary, Server_Hello/binary>>,
-
-  %% TODO: Move to separate function.
-  Offset = to_var_length(Send),
-  Length = to_var_length(byte_size(Server_Hello)),
-  Crypto_Hello = <<16#18:8, Offset/binary, Length/binary, Server_Hello/binary>>,
-
-  %% Add acknowledgement(s) to packet.
-  %% TODO: ack_frame function
-  {Ack_Frame, Ack} = quic_packet:to_ack_frame(Ack0),
-  Init_Payload = <<Crypto_Hello/binary, Ack_Frame/binary>>,
-
-  %% Unencrypted packet number is used for the nonce.
-  Nonce = get_nonce(IPN, Init_IV),
-  
-  %% This function needs to be updated in quic_packet.
-  Header0 = quic_packet:form_header(initial, Data0, byte_size(Init_Payload)),
-  
-  %% "Initial packets sent by the server MUST include a zero-length token."
-  %% Section 4.4.1 of QUIC.
-  %% This value is not included in Header0.
-  Header = <<Header0/binary, 0:8>>,
-
-  %% Encrypt the packet.
-  {Enc_Frames, Tag} = encrypt(Init_Payload, Init_Key, Nonce, Header),
-  
-  %% Encode the packet number using the packet_num_init_secret and AEAD Tag.
-  Enc_Pkt_Num = encrypt_pkt_num(IPN, Pkt_Num_Secret, Tag),
-  
-  %% Increment the packet number and update acks. I don't think anything else changes.
-  Data = Data0#quic_data{
-           init_pkt_num = IPN + 1,
-           init_ack = Ack,
-           crypto = Crypto0#quic_crypto{
-                      transcript = Transcript,
-                      init_offsets = {Send + byte_size(Server_Hello) + 1, _Recv}
-                     }
-          },
-  
-  %% Remove the unencoded packet number and replace.
-  Head_Len = byte_size(Header) - 5,
-  <<Header1:Head_Len/binary, _Rest/binary>> = Header,
-  
-  %% Add the Encoded packet number and re-add the empty token byte.
-  Initial = <<Header1/binary, Enc_Pkt_Num:4/binary, 0:8,
-              Tag/binary, Enc_Frames/binary>>,
-  
-  {ok, Data, Initial};
-
-form_packet(encrypted_exts, 
-            #quic_data{
-               type = server,
-               hand_ack = Ack0,
-               hand_pkt_num = HPN,
-               crypto = #quic_crypto{
-                           state = handshake,
-                           pkt_num_handshake_secret = Pkt_Num_Secret,
-                           server_handshake_key = Handshake_Key,
-                           server_handshake_iv = Handshake_IV,
-                           transcript = Transcript0,
-                           handshake_offsets = {Send, _Recv}
-                          } = Crypto0
-              } = Data0) ->
-  %% Form Encrypted Extensions packet.
-  
-  Exts = encrypted_exts(Data0),
-  
-  %% Add it to the transcript
-  Transcript = <<Transcript0/binary, Exts/binary>>,
-  
-  %% Wrap in a crypto frame
-  Offset = to_var_length(Send),
-  Length = to_var_length(byte_size(Exts)),
-  Crypto_Ext = <<16#18:8, Offset/binary, Length/binary, Exts/binary>>,
-  
-  %% Add any acks: Probably empty.
-  {Ack_Frames, Ack} = quic_packet:to_ack_frame(Ack0),
-  Handshake_Payload = <<Crypto_Ext/binary, Ack_Frames/binary>>,
-  
-  %% Create the nonce.
-  Nonce = get_nonce(HPN, Handshake_IV),
-  
-  Header0 = quic_packet:form_header(handshake, Data0, byte_size(Handshake_Payload)),
   
   %% Encrypt the Packet
-  {Enc_Frames, Tag} = encrypt(Handshake_Payload, Handshake_Key, Nonce, Header0),
+  {Enc_Frames, Tag} = encrypt(Unencrypted, Key, Nonce, <<Header0/binary, Pkt_Num_Bin/binary>>),
   
   %% Encode the packet number
-  Enc_Pkt_Num = encrypt_pkt_num(HPN, Pkt_Num_Secret, Tag),
+  Enc_Pkt_Num = encrypt_pkt_num(Pkt_Num_Bin, Pkt_Num_Secret, Tag),
   
-  %% Update Data
-  Data = Data0#quic_data{
-           hand_pkt_num = HPN + 1,
-           hand_ack = Ack,
-           crypto = Crypto0#quic_crypto{
-                      transcript = Transcript,
-                      handshake_offsets = {Send + byte_size(Exts) + 1, _Recv}
-                     }
-          },
+  {ok, Data, <<Header0/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>};
   
-  %% Replace the packet number
-  Head_Len = byte_size(Header0),
-  <<Header:Head_Len/binary, _Rest/binary>> = Header0,
-  
-  {ok, Data, <<Header/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>};
+encrypt_packet(short,
+               #quic_data{
+                  type = Type,
+                  crypto = #quic_crypto{
+                              pkt_num_protected_secret = Pkt_Num_Secret,
+                              client_protected_iv = C_IV,
+                              client_protected_key = C_Key,
+                              server_protected_iv = S_IV,
+                              server_protected_key = S_Key
+                             }
+                 } = Data,
+               Header0, Payload, {Pkt_Num, Pkt_Num_Bin}) ->
 
-form_packet(certificate,
-            #quic_data{
-               type = server,
-               hand_ack = Ack0,
-               hand_pkt_num = HPN,
-               crypto = #quic_crypto{
-                           state = handshake,
-                           pkt_num_handshake_secret = Pkt_Num_Secret,
-                           server_handshake_key = Handshake_Key,
-                           server_handshake_iv = Handshake_IV,
-                           transcript = Transcript0,
-                           handshake_offsets = {Send, _Recv},
-                           cert = Cert,
-                           cert_chain = Cert_Chain
-                          } = Crypto0
-              } = Data0) ->
-  %% Creates the certificate handshake packet.
+  {IV, Key} = case Type of
+                server -> {S_IV, S_Key};
+                client -> {C_IV, C_Key}
+              end,
 
-  Certificate = encode_tls_cert(server, Cert_Chain, Cert),
-  
-  %% Add it to the transcript
-  Transcript = <<Transcript0/binary, Certificate/binary>>,
-  
-  %% Wrap in a crypto frame
-  Offset = to_var_length(Send),
-  Length = to_var_length(byte_size(Certificate)),
-  Crypto_Cert = <<16#18:8, Offset/binary, Length/binary, Certificate/binary>>,
-  
-  %% Add any acks: Probably empty.
-  {Ack_Frames, Ack} = quic_packet:to_ack_frame(Ack0),
-  Handshake_Payload = <<Crypto_Cert/binary, Ack_Frames/binary>>,
-  
-  %% Create the nonce.
-  Nonce = get_nonce(HPN, Handshake_IV),
-  
-  Header0 = quic_packet:form_header(handshake, Data0, byte_size(Handshake_Payload)),
+  Nonce = get_nonce(IV, Pkt_Num),
   
   %% Encrypt the Packet
-  {Enc_Frames, Tag} = encrypt(Handshake_Payload, Handshake_Key, Nonce, Header0),
+  {Enc_Frames, Tag} = encrypt(Payload, Key, Nonce, <<Header0/binary, Pkt_Num_Bin/binary>>),
   
   %% Encode the packet number
-  Enc_Pkt_Num = encrypt_pkt_num(HPN, Pkt_Num_Secret, Tag),
-  
-  %% Update Data
-  Data = Data0#quic_data{
-           hand_pkt_num = HPN + 1,
-           hand_ack = Ack,
-           crypto = Crypto0#quic_crypto{
-                      transcript = Transcript,
-                      handshake_offsets = {Send + byte_size(Certificate) + 1, _Recv}
-                     }
-          },
-  
-  %% Replace the packet number
-  Head_Len = byte_size(Header0),
-  <<Header:Head_Len/binary, _Rest/binary>> = Header0,
-  
-  {ok, Data, <<Header/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>};
+  Enc_Pkt_Num = encrypt_pkt_num(Pkt_Num_Bin, Pkt_Num_Secret, Tag),
 
-form_packet(cert_verify,
-            #quic_data{
-               type = server,
-               hand_ack = Ack0,
-               hand_pkt_num = HPN,
-               crypto = #quic_crypto{
-                           state = handshake,
-                           pkt_num_handshake_secret = Pkt_Num_Secret,
-                           server_handshake_key = Handshake_Key,
-                           server_handshake_iv = Handshake_IV,
-                           transcript = Transcript0,
-                           handshake_offsets = {Send, _Recv}
-                          } = Crypto0
-              } = Data0) ->
-  
-  %% Creates the cert verify handshake packet.
+  {ok, Data, <<Header0/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>};
 
-  Cert_Verify = encode_tls_cert_verify(server, Data0),
-  
-  %% Add it to the transcript
-  Transcript = <<Transcript0/binary, Cert_Verify/binary>>,
-  
-  %% Wrap in a crypto frame
-  Offset = to_var_length(Send),
-  Length = to_var_length(byte_size(Cert_Verify)),
-  Crypto_Cert = <<16#18:8, Offset/binary, Length/binary, Cert_Verify/binary>>,
-  
-  %% Add any acks: Probably empty.
-  {Ack_Frames, Ack} = quic_packet:to_ack_frame(Ack0),
-  Handshake_Payload = <<Crypto_Cert/binary, Ack_Frames/binary>>,
-  
-  %% Create the nonce.
-  Nonce = get_nonce(HPN, Handshake_IV),
-  
-  Header0 = quic_packet:form_header(handshake, Data0, byte_size(Handshake_Payload)),
-  
-  %% Encrypt the Packet
-  {Enc_Frames, Tag} = encrypt(Handshake_Payload, Handshake_Key, Nonce, Header0),
-  
-  %% Encrypt the packet number
-  Enc_Pkt_Num = encrypt_pkt_num(HPN, Pkt_Num_Secret, Tag),
-  
-  %% Update Data
-  Data = Data0#quic_data{
-           hand_pkt_num = HPN + 1,
-           hand_ack = Ack,
-           crypto = Crypto0#quic_crypto{
-                      transcript = Transcript,
-                      handshake_offsets = {Send + byte_size(Cert_Verify) + 1, _Recv}
-                     }
-          },
-  
-  %% Replace the packet number with encrypted.
-  Head_Len = byte_size(Header0),
-  <<Header:Head_Len/binary, _Rest/binary>> = Header0,
-  
-  {ok, Data, <<Header/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>};
-
-form_packet(finished,
-            #quic_data{
-               type = server,
-               hand_ack = Ack0,
-               hand_pkt_num = HPN,
-               crypto = #quic_crypto{
-                           state = handshake,
-                           server_handshake_secret = Server_HS_Secret,
-                           server_handshake_key = Handshake_Key,
-                           server_handshake_iv = Handshake_IV,
-                           pkt_num_handshake_secret = Pkt_Num_Secret,
-                           transcript = Transcript0,
-                           handshake_offsets = {Send, _Recv}
-                          } = Crypto0
-              } = Data0) ->
-  
-  %% Creates the tls server finished packet.
-
-  %% First the finished key has to be derived.
-  Fin_Key = derive_secret(finished, Server_HS_Secret, <<>>),
-
-  Fin = encode_tls_fin(Fin_Key, Transcript0),
-  
-  %% Add it to the transcript
-  Transcript = <<Transcript0/binary, Fin/binary>>,
-  
-  %% Wrap in a crypto frame
-  Offset = to_var_length(Send),
-  Length = to_var_length(byte_size(Fin)),
-  Crypto_Fin = <<16#18:8, Offset/binary, Length/binary, Fin/binary>>,
-  
-  %% Add any acks: Probably empty.
-  {Ack_Frames, Ack} = quic_packet:to_ack_frame(Ack0),
-  Handshake_Payload = <<Crypto_Fin/binary, Ack_Frames/binary>>,
-  
-  %% Create the nonce.
-  Nonce = get_nonce(HPN, Handshake_IV),
-  
-  Header0 = quic_packet:form_header(handshake, Data0, byte_size(Handshake_Payload)),
-  
-  %% Encrypt the Packet
-  {Enc_Frames, Tag} = encrypt(Handshake_Payload, Handshake_Key, Nonce, Header0),
-  
-  %% Encode the packet number
-  Enc_Pkt_Num = encrypt_pkt_num(HPN, Pkt_Num_Secret, Tag),
-  
-  %% Update Data
-  Data = Data0#quic_data{
-           hand_pkt_num = HPN + 1,
-           hand_ack = Ack,
-           crypto = Crypto0#quic_crypto{
-                      transcript = Transcript,
-                      handshake_offsets = {Send + byte_size(Fin) + 1, _Recv}
-                     }
-          },
-  
-  %% Replace the packet number
-  Head_Len = byte_size(Header0),
-  <<Header:Head_Len/binary, _Rest/binary>> = Header0,
-  
-  {ok, Data, <<Header/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>};
-
-form_packet(finished,
-            #quic_data{
-               type = client,
-               hand_ack = Ack0,
-               hand_pkt_num = HPN,
-               crypto = #quic_crypto{
-                           state = handshake,
-                           client_handshake_secret = Client_HS_Secret,
-                           client_handshake_key = Handshake_Key,
-                           client_handshake_iv = Handshake_IV,
-                           pkt_num_handshake_secret = Pkt_Num_Secret,
-                           transcript = Transcript0,
-                           handshake_offsets = {Send, _Recv}
-                          } = Crypto0
-              } = Data0) ->
-  
-  %% Creates the tls client finished packet.
-
-  %% First the finished key has to be derived.
-  Fin_Key = derive_secret(finished, Client_HS_Secret, <<>>),
-
-  Fin = encode_tls_fin(Fin_Key, Transcript0),
-  
-  %% Add it to the transcript
-  Transcript = <<Transcript0/binary, Fin/binary>>,
-  
-  %% Wrap in a crypto frame
-  Offset = to_var_length(Send),
-  Length = to_var_length(byte_size(Fin)),
-  Crypto_Fin = <<16#18:8, Offset/binary, Length/binary, Fin/binary>>,
-  
-  %% Add acks.
-  {Ack_Frames, Ack} = quic_packet:to_ack_frame(Ack0),
-  Handshake_Payload = <<Crypto_Fin/binary, Ack_Frames/binary>>,
-  
-  %% Create the nonce.
-  Nonce = get_nonce(HPN, Handshake_IV),
-  
-  Header0 = quic_packet:form_header(handshake, Data0, byte_size(Handshake_Payload)),
-  
-  %% Encrypt the Packet
-  {Enc_Frames, Tag} = encrypt(Handshake_Payload, Handshake_Key, Nonce, Header0),
-  
-  %% Encode the packet number
-  Enc_Pkt_Num = encrypt_pkt_num(HPN, Pkt_Num_Secret, Tag),
-  
-  %% Update Data
-  Data = Data0#quic_data{
-           hand_pkt_num = HPN + 1,
-           hand_ack = Ack,
-           crypto = Crypto0#quic_crypto{
-                      transcript = undefined,
-                      %% Transcript is no longer needed.
-                      %% This would be used to create the resumption master
-                      %% secret for both server and client. Not implemented.
-                      handshake_offsets = {Send + byte_size(Fin) + 1, _Recv}
-                     }
-          },
-  
-  %% Replace the packet number
-  Head_Len = byte_size(Header0),
-  <<Header:Head_Len/binary, _Rest/binary>> = Header0,
-  
-  {ok, Data, <<Header/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>}.
-
-
--spec form_packet(Type, Data, Frames) -> {ok, Data, Packet} when
-    Type :: short | early_data,
-    Data :: #quic_data{},
-    Frames :: [quic_frame()],
-    Packet :: binary().
-
-form_packet(short,
-            #quic_data{
-               type = client,
-               app_ack = Ack0,
-               app_pkt_num = Pkt_Num,
-               crypto = #quic_crypto{
-                           pkt_num_protected_secret = Pkt_Num_Secret,
-                           client_protected_iv = IV,
-                           client_protected_key = Key
-                          }
-              } = Data0,
-            Frames) ->
-
-  Nonce = get_nonce(Pkt_Num, IV),
-
-  {Ack_Frames, Ack} = quic_packet:to_ack_frame(Ack0),
-  
-  {ok, Data, Header0, Payload} = 
-    quic_packet:form_packet(short, Data0, [Ack_Frames | Frames]),
-  
-  %% Encrypt the Packet
-  {Enc_Frames, Tag} = encrypt(Payload, Key, Nonce, Header0),
-  
-  %% Encode the packet number
-  Enc_Pkt_Num = encrypt_pkt_num(Pkt_Num, Pkt_Num_Secret, Tag),
-
-  Data = Data0#quic_data{
-           app_pkt_num = Pkt_Num + 1,
-           app_ack = Ack
-          },
-  
-  %% Replace the packet number
-  %% TODO: change to variable size packet num.
-  Head_Len = byte_size(Header0) - 4,
-  <<Header:Head_Len/binary, _Rest/binary>> = Header0,
-  
-  {ok, Data, <<Header/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>};
-
-%% Forms early 0-RTT data for the client.
-form_packet(early_data,
-            #quic_data{
-               type = client,
-               init_ack = Ack0,
-               init_pkt_num = IPN,
-               crypto = #quic_crypto{
-                           pkt_num_init_secret = Pkt_Num_Secret,
-                           client_init_iv = IV,
-                           client_init_key = Key
-                          }
-              } = Data0,
-            Frames) ->
+%% Encrypts early 0-RTT data for the client.
+encrypt_packet(early_data,
+               #quic_data{
+                  type = client,
+                  crypto = #quic_crypto{
+                              pkt_num_init_secret = Pkt_Num_Secret,
+                              client_init_iv = IV,
+                              client_init_key = Key
+                             }
+                 } = Data0,
+               Header0, Payload, {Pkt_Num, Pkt_Num_Bin}) ->
   %% This sends early 0-RTT data to the server.
   %% The server cannot send 0-RTT data so there is no clause for them.
   
-  Nonce = get_nonce(IPN, IV),
-
-  {Ack_Frames, Ack} = quic_packet:to_ack_frame(Ack0),
-  
-  {ok, Data1, Header0, Payload} = 
-    quic_packet:form_packet(early_data, Data0, [Ack_Frames | Frames]),
+  Nonce = get_nonce(IV, Pkt_Num),
   
   %% Encrypt the Packet
-  {Enc_Frames, Tag} = encrypt(Payload, Key, Nonce, Header0),
+  {Enc_Frames, Tag} = encrypt(Payload, Key, Nonce, <<Header0/binary, Pkt_Num_Bin/binary>>),
   
   %% Encode the packet number
-  Enc_Pkt_Num = encrypt_pkt_num(IPN, Pkt_Num_Secret, Tag),
-
-  Data2 = Data1#quic_data{
-            init_pkt_num = IPN + 1,
-           init_ack = Ack
-          },
+  Enc_Pkt_Num = encrypt_pkt_num(Pkt_Num_Bin, Pkt_Num_Secret, Tag),
   
-  %% Replace the packet number
-  %% TODO: variable length packet num.
-  Head_Len = byte_size(Header0) - 4,
-  <<Header:Head_Len/binary, _Rest/binary>> = Header0,
-  
-  {ok, Data2, <<Header/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>}.
+  {ok, Data0, <<Header0/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>}.
 
 
--spec parse_packet(Raw_Packet, Data) -> Result when
-    Raw_Packet :: binary(),
+-spec decrypt_packet(Data, Header_Info, Encrypted) -> Result when
     Data :: #quic_data{},
-    Result :: [Packet] |
-              {invalid, Data} |
-              {invalid, Reason} |
-              {unsupported, Data},
-    Packet :: {Type, Data, Frames, TLS_Info} |
-              %% ^^ decryptable vv not decryptable.
-              {Type, Raw_Packet},
-    Frames :: [quic_frame()],
-    TLS_Info :: #tls_record{},
-    Reason :: gen_quic:errors().
+    Header_Info :: {Pkt_Type, Length, Header_Bin},
+    Pkt_Type :: initial |
+                handshake |
+                early_Data |
+                short,
+    Length :: non_neg_integer(),
+    Header_Bin :: binary(),
+    Encrypted :: binary(),
+    Result :: {ok, Data, Pkt_Num, Payload} |
+              {ok, Data, Pkt_Num, Payload, Encrypted} |
+              {error, edecrypt} |
+              {error, Reason},
+    Pkt_Num :: non_neg_integer(),
+    Payload :: binary(),
+    Reason :: gen_quic:error().
 
-parse_packet(<<Raw_Packet/binary>>, 
-             #quic_data{
-                type = server,
-                conn = #quic_conn{
-                          src_conn_ID = undefined,
-                          dest_conn_ID = undefined
-                         }
-               } = Data0) ->
-  %% The first initial packet received by the server.
-  %% Crypto is not initialized yet since we do not know the src or dest conn ids
-  %% First split the packet by header info and frames.
-  case quic_packet:parse_header(Raw_Packet, Data0) of
-    {error, Reason} ->
-      %% This will be for retry packets, but not implemented yet.
-      %% Something like
-      %% Data1 = retry_data(Data0),
-      {invalid, Data0};
+decrypt_packet(#quic_data{
+                  type = Type,
+                  crypto = #quic_crypto{
+                              pkt_num_init_secret = Secret,
+                              client_init_key = C_Key,
+                              client_init_iv = C_IV,
+                              server_init_key = S_Key,
+                              server_init_iv = S_IV
+                             },
+                  pkt_nums = #{initial := Pkt_Num_Range}
+                 } = Data,
+               {initial, Length, Header_Bin},
+               Encrypted0) ->
 
-    {unsupported, Data1} ->
-      %% unsupported version of quic. quic server will send a vx_neg packet back.
-      {unsupported, Data1};
+  {IV, Key} = case Type of
+                server -> {C_IV, C_Key};
+                client -> {S_IV, S_Key}
+              end,
+  
+  {Trunc_Num, Pkt_Num_Bin, Bits} = decrypt_pkt_num(Secret, Encrypted0),
+  Full_Header = <<Header_Bin/binary, Pkt_Num_Bin/binary>>,
 
-    [{initial, Data1, Header, Enc_Pkt_Num, Reset_Token, Encoded}] ->
-      %% Header does not contain the packet number or reset token.
-      %% The first packet from the client cannot be coalesced.
-      %% First initialize the crypto stuff.
-      Data2 = crypto_init(Data1),
-      [decrypt_and_parse({initial, Data2, Header, Enc_Pkt_Num, 
-                          Reset_Token, Encoded})]
+  Pkt_Num = quic_utils:packet_num_untruncate(Pkt_Num_Range, Trunc_Num, Bits),
+  
+  Pkt_Num_Length = byte_size(Pkt_Num_Bin),
+  <<_:Pkt_Num_Length/unit:8, Tag:16/binary, Encrypted:Length/binary, Other_Packets/binary>> = Encrypted0,
+  
+  Nonce = get_nonce(IV, Trunc_Num),
+  
+  case decrypt(Encrypted, Key, Nonce, Full_Header, Tag) of
+    error ->
+      {error, edecrypt};
+    Payload when byte_size(Other_Packets) > 0 ->
+      {ok, Data, Pkt_Num, Payload, Other_Packets};
+    Payload ->
+      {ok, Data, Pkt_Num, Payload}
   end;
 
-%% For all other packets, we should know how to decrypt.
-parse_packet(<<Packet/binary>>, Data0) ->
-  case quic_packet:parse_header(Packet, Data0) of
-    {invalid, Reason} ->
-      {invalid, Reason};
-    
-    Valid_Packets when is_list(Valid_Packets) ->
-      lists:map(fun decrypt_and_parse/1, Valid_Packets)
+decrypt_packet(#quic_data{
+                  type = Type,
+                  crypto = #quic_crypto{
+                              pkt_num_handshake_secret = Secret,
+                              client_handshake_key = C_Key,
+                              client_handshake_iv = C_IV,
+                              server_handshake_key = S_Key,
+                              server_handshake_iv = S_IV
+                             },
+                  pkt_nums = #{handshake := Pkt_Num_Range}
+                 } = Data,
+               {handshake, Length, Header_Bin},
+               Encrypted0) ->
+  {IV, Key} = case Type of
+                server -> {C_IV, C_Key};
+                client -> {S_IV, S_Key}
+              end,
+  
+  {Trunc_Num, Pkt_Num_Bin, Bits} = decrypt_pkt_num(Secret, Encrypted0),
+  Full_Header = <<Header_Bin/binary, Pkt_Num_Bin/binary>>,
+  
+  Pkt_Num = quic_utils:packet_num_untruncate(Pkt_Num_Range, Trunc_Num, Bits),
+
+  Pkt_Num_Length = byte_size(Pkt_Num_Bin),
+  <<_:Pkt_Num_Length/unit:8, Tag:16/binary, Encrypted:Length/binary, Other_Packets/binary>> = Encrypted0,
+  
+  Nonce = get_nonce(IV, Trunc_Num),
+  
+  case decrypt(Encrypted, Key, Nonce, Full_Header, Tag) of
+    error ->
+      {error, edecrypt};
+    Payload when byte_size(Other_Packets) > 0 ->
+      {ok, Data, Pkt_Num, Payload, Other_Packets};
+    Payload ->
+      {ok, Data, Pkt_Num, Payload}
+  end;
+
+
+decrypt_packet(#quic_data{
+                  type = Type,
+                  crypto = #quic_crypto{
+                              pkt_num_protected_secret = Secret,
+                              client_protected_key = C_Key,
+                              client_protected_iv = C_IV,
+                              server_protected_key = S_Key,
+                              server_protected_iv = S_IV
+                             },
+                  pkt_nums = #{protected := Pkt_Num_Range}
+                 } = Data,
+               {short, Length, Header_Bin},
+               Encrypted0) ->
+  {IV, Key} = case Type of
+                server -> {C_IV, C_Key};
+                client -> {S_IV, S_Key}
+              end,
+  
+  {Trunc_Num, Pkt_Num_Bin, Bits} = decrypt_pkt_num(Secret, Encrypted0),
+  Full_Header = <<Header_Bin/binary, Pkt_Num_Bin/binary>>,
+  
+  Pkt_Num = quic_utils:packet_num_untruncate(Pkt_Num_Range, Trunc_Num, Bits),
+
+  Pkt_Num_Length = byte_size(Pkt_Num_Bin),
+  <<_:Pkt_Num_Length/unit:8, Tag:16/binary, Encrypted:Length/binary, Other_Packets/binary>> = Encrypted0,
+  
+  Nonce = get_nonce(IV, Trunc_Num),
+  
+  case decrypt(Encrypted, Key, Nonce, Full_Header, Tag) of
+    error ->
+      {error, edecrypt};
+    Payload when byte_size(Other_Packets) > 0 ->
+      {ok, Data, Pkt_Num, Payload, Other_Packets};
+    Payload when is_binary(Payload) ->
+      {ok, Data, Pkt_Num, Payload}
+  end;
+
+decrypt_packet(#quic_data{
+                  type = server,
+                  crypto = #quic_crypto{
+                              pkt_num_init_secret = Secret,
+                              client_early_key = Key,
+                              client_early_iv = IV
+                             },
+                  pkt_nums = #{protected := Pkt_Num_Range}
+                 } = Data,
+               {early_data, Length, Header_Bin},
+               Encrypted0) ->
+  
+  {Trunc_Num, Pkt_Num_Bin, Bits} = decrypt_pkt_num(Secret, Encrypted0),
+  Full_Header = <<Header_Bin/binary, Pkt_Num_Bin/binary>>,
+  
+  Pkt_Num = quic_utils:packet_num_untruncate(Pkt_Num_Range, Trunc_Num, Bits),
+
+  Pkt_Num_Length = byte_size(Pkt_Num_Bin),
+  <<_:Pkt_Num_Length/unit:8, Tag:16/binary, Encrypted:Length/binary, Other_Packets/binary>> = Encrypted0,
+  
+  Nonce = get_nonce(IV, Trunc_Num),
+  
+  case decrypt(Encrypted, Key, Nonce, Full_Header, Tag) of
+    error ->
+      {error, edecrypt};
+    Payload when byte_size(Other_Packets) > 0 ->
+      {ok, Data, Pkt_Num, Payload, Other_Packets};
+    Payload ->
+      {ok, Data, Pkt_Num, Payload}
   end.
 
+-spec decrypt_pkt_num(Secret, Encrypted) -> Result when
+    Secret :: binary(),
+    Encrypted :: binary(),
+    Result :: {Truncated_Packet_Num, Packet_Num_Bin, Bits},
+    Truncated_Packet_Num :: non_neg_integer(), 
+    Packet_Num_Bin :: binary(), 
+    Bits :: non_neg_integer().
 
--spec decrypt_and_parse(Packet) -> Result when
-    Packet :: {Type | vx_neg | retry, Data, Header, Pkt_Num, Encoded} |
-              {initial, Data, Header, Pkt_Num, Reset_Token, Encoded},
-    Type :: early_data |
-            handshake |
-            short,
-    Data :: #quic_data{},
-    Header :: binary(),
-    Pkt_Num :: binary(),
-    Encoded :: binary(),
-    Reset_Token :: binary(),
-    TLS_Info :: #tls_record{},
-    Result :: {initial | Type, {Data, Frames, TLS_Info}} |
-              Packet |
-              %% ^^ When we cannot decrypt it yet.
-              {retry, Data} |
-              {vx_neg, Data, Frames} |
-              {error, protocol_violation}.
+decrypt_pkt_num(Secret, Encrypted) when byte_size(Encrypted) - 20 < 0 ->
+  %% The sampling takes the last 16 bytes of the packet.
+  Offset = byte_size(Encrypted) - 16,
+  
+  <<Enc_Pkt_Num:Offset/binary, Sample:16/binary>> = Encrypted,
+  State = crypto:stream_init(aes_ctr, Secret, Sample),
+  decrypt_pkt_num_(State, Enc_Pkt_Num);
 
-decrypt_and_parse({initial,
-                   #quic_data{
-                      type = Type,
-                      crypto = #quic_crypto{
-                                  pkt_num_init_secret = Secret,
-                                  client_init_key = C_Key,
-                                  client_init_iv = C_IV,
-                                  server_init_key = S_Key,
-                                  server_init_iv = S_IV
-                                 }
-                     } = Data,
-                   Header, Enc_Pkt_Num, Reset_Token, Encoded}) ->
-  %% Determine which set of keys and iv's to use.
-  {Key, IV} = 
-    case Type of
-      server -> {C_Key, C_IV};
-      client -> {S_Key, S_IV}
-    end,
+decrypt_pkt_num(Secret, Encrypted) ->
+  <<Enc_Pkt_Num:4/binary, Sample:16/binary, _/binary>> = Encrypted,
+  State = crypto:stream_init(aes_ctr, Secret, Sample),
+  decrypt_pkt_num_(State, Enc_Pkt_Num).
 
-  %% Separate the tag (16 bytes) from the encoded payload.
-  <<Tag:16/binary, Enc_Frames/binary>> = Encoded,
-  
-  %% Decrypt the packet number with the pkt_num_secret and tag.
-  Pkt_Num = decrypt_pkt_num(Enc_Pkt_Num, Secret, Tag),
-      
-  %% Form the nonce
-  Nonce = get_nonce(IV, Pkt_Num),
-
-  %% Decrypt the frames and add the packet number and reset token back
-  Frames = decrypt(Enc_Frames, Key, Nonce, 
-                   <<Header/binary, Pkt_Num/binary, Reset_Token/binary>>),
-  
-  %% update data to include the ack.
-  %% TODO:
-  Data1 = add_ack(Data, Pkt_Num),
-  
-  %% Parse the frames.
-  {initial, quic_packet:parse_frames(Frames, Data1)};
-
-decrypt_and_parse({short,
-                   #quic_data{
-                      type = Type,
-                      crypto = #quic_crypto{
-                                  pkt_num_protected_secret = Secret,
-                                  client_protected_key = C_Key,
-                                  client_protected_iv = C_IV,
-                                  server_protected_key = S_Key,
-                                  server_protected_iv = S_IV
-                                 }
-                     } = Data,
-                   Header, Enc_Pkt_Num, Encoded}) when
-    C_Key =/= undefined, S_Key =/= undefined ->
-  
-  %% Determine which set of keys and iv's to use.
-  {Key, IV} = 
-    case Type of
-      server -> {C_Key, C_IV};
-      client -> {S_Key, S_IV}
-    end,
-
-  %% Separate the tag (16 bytes) from the encoded payload.
-  <<Tag:16/binary, Enc_Frames/binary>> = Encoded,
-  
-  %% Decrypt the packet number with the pkt_num_secret and tag.
-  Pkt_Num = decrypt_pkt_num(Enc_Pkt_Num, Secret, Tag),
-      
-  %% Form the nonce
-  Nonce = get_nonce(IV, Pkt_Num),
-
-  %% Decrypt the frames and add the packet number and reset token back
-  Frames = decrypt(Enc_Frames, Key, Nonce, <<Header/binary, Pkt_Num/binary>>),
-  
-  %% update data to include the ack.
-  %% TODO:
-  Data1 = add_ack(Data, Pkt_Num),
-  
-  %% Parse the frames.
-  {short, quic_packet:parse_frames(Frames, Data1)};
-
-decrypt_and_parse({handshake,
-                   #quic_data{
-                      type = Type,
-                      crypto = #quic_crypto{
-                                  pkt_num_handshake_secret = Secret,
-                                  client_handshake_key = C_Key,
-                                  client_handshake_iv = C_IV,
-                                  server_handshake_key = S_Key,
-                                  server_handshake_iv = S_IV
-                                 }
-                     } = Data,
-                   Header, Enc_Pkt_Num, Encoded}) when 
-    C_Key =/= undefined, S_Key =/= undefined ->
-  %% Determine which set of keys and iv's to use.
-  {Key, IV} = 
-    case Type of
-      server -> {C_Key, C_IV};
-      client -> {S_Key, S_IV}
-    end,
-
-  %% Separate the tag (16 bytes) from the encoded payload.
-  <<Tag:16/binary, Enc_Frames/binary>> = Encoded,
-  
-  %% Decrypt the packet number with the pkt_num_secret and tag.
-  Pkt_Num = decrypt_pkt_num(Enc_Pkt_Num, Secret, Tag),
-      
-  %% Form the nonce
-  Nonce = get_nonce(IV, Pkt_Num),
-
-  %% Decrypt the frames and add the packet number and reset token back
-  Frames = decrypt(Enc_Frames, Key, Nonce, <<Header/binary, Pkt_Num/binary>>),
-  
-  %% update data to include the ack.
-  %% TODO:
-  Data1 = add_ack(Data, Pkt_Num),
-  
-  %% Parse the frames.
-  {handshake, quic_packet:parse_frames(Frames, Data1)};
-
-%% TODO: Early_data is not implemented yet.
-%% decrypt_and_parse({early_data,
-%%                    #quic_data{
-%%                       type = Type,
-%%                       crypto = #quic_crypto{
-%%                                   pkt_num_init_secret = Secret,
-%%                                   client_early_key = Key,
-%%                                   client_early_iv = IV,
-%%                                  }
-%%                      } = Data,
-%%                    Header, Enc_Pkt_Num, Encoded}) ->
-
-%%   %% The server cannot send early data so it has to be the client's key and iv.
-%%   %% Separate the tag (16 bytes) from the encoded payload.
-%%   <<Tag:16/binary, Enc_Frames/binary>> = Encoded,
-  
-%%   %% Decrypt the packet number with the pkt_num_secret and tag.
-%%   Pkt_Num = decrypt_pkt_num(Enc_Pkt_Num, Secret, Tag),
-  
-%%   %% Form the nonce
-%%   Nonce = get_nonce(IV, Pkt_Num),
-  
-%%   %% Decrypt the frames and add the packet number and reset token back
-%%   Frames = decrypt(Enc_Frames, Key, Nonce, <<Header/binary, Pkt_Num/binary>>),
-  
-%%   %% update data to include the ack.
-%%   %% TODO:
-%%   Data3 = add_ack(Data2, Pkt_Num),
-  
-%%   %% Parse the frames.
-%%   {early_data, quic_packet:parse_frames(Frames, Data3)};
-
-decrypt_and_parse({retry, Data, _Header, _Num, _Frames}) ->
-  %% Not encrypted. All information should be updated in Data when a retry
-  %% packet is encountered.
-  {retry, Data};
-
-decrypt_and_parse({vx_neg, Data, _Header, _Num, Vx_Frames}) ->
-  %% The packet is not encrypted. Parse the version frames and return them.
-  Versions = [ <<Vx/binary>> || <<Vx:32>> <= Vx_Frames ],
-  {vx_neg, Data, Versions};
-
-decrypt_and_parse(Packet) ->
-  %% We can't decrypt it yet
-  Packet.
+decrypt_pkt_num_(State, <<Pkt_Num_1:1/binary, _Rest/binary>> = Full) ->
+  case crypto:stream_decrypt(State, <<Pkt_Num_1/binary>>) of
+    {_New_State, <<0:1, Pkt_Num:7/integer-unit:1>> = Pkt_Num_Bin} ->
+      {Pkt_Num, Pkt_Num_Bin, 7};
+    {_New_State, <<1:1, _Num/bits>>} ->
+      <<Enc_Pkt_Num:2/binary, _/binary>> = Full,
+      {_, <<_:2, Pkt_Num:14/integer-unit:1>> = Pkt_Num_Bin} = crypto:stream_decrypt(State, Enc_Pkt_Num),
+      {Pkt_Num, Pkt_Num_Bin, 14};
+    {_New_State, <<3:2, _Num/bits>>} ->
+      <<Enc_Pkt_Num:4/binary, _/binary>> = Full,
+      {_, <<_:2, Pkt_Num:30/integer-unit:1>> = Pkt_Num_Bin} = crypto:stream_decrypt(State, Enc_Pkt_Num),
+      {Pkt_Num, Pkt_Num_Bin, 30}
+  end.
 
 
 -spec initial_extract(Client_ID) -> PRK when
@@ -1639,31 +1152,31 @@ extract(Secret, Salt) ->
 %% TODO: Add more.
 derive_secret(client_initial, PRK, Context) ->
   %% Section 5.1: QUIC-TLS
-  expand(PRK, "quic client in", Context);
+  expand(PRK, <<"quic client in">>, Context);
 derive_secret(server_initial, PRK, Context) ->
   %% Section 5.1: QUIC-TLS
-  expand(PRK, "quic server in", Context);
+  expand(PRK, <<"quic server in">>, Context);
 derive_secret(packet_num, PRK, Context) ->
   %% Section 5.3: QUIC-TLS
-  expand(PRK, "quic pn", Context);
+  expand(PRK, <<"quic pn">>, Context);
 derive_secret(client_hs, PRK, Context) ->
   %% TLS 1.3 client handshake traffic secret.
-  expand(PRK, "quic c hs traffic", Context);
+  expand(PRK, <<"quic c hs traffic">>, Context);
 derive_secret(server_hs, PRK, Context) ->
   %% TLS 1.3 server handshake traffic secret.
-  expand(PRK, "quic s hs traffic", Context);
-derive_secret(client_ap, PRK, Context) ->
+  expand(PRK, <<"quic s hs traffic">>, Context);
+derive_secret(client_app, PRK, Context) ->
   %% TLS 1.3 client application traffic secret.
-  expand(PRK, "quic c ap traffic", Context);
-derive_secret(server_ap, PRK, Context) ->
+  expand(PRK, <<"quic c ap traffic">>, Context);
+derive_secret(server_app, PRK, Context) ->
   %% TLS 1.3 server application traffic secret.
-  expand(PRK, "quic s ap traffic", Context);
+  expand(PRK, <<"quic s ap traffic">>, Context);
 derive_secret(finished, PRK, Context) ->
   %% TLS 1.3 finished record secret.
-  expand(PRK, "quic finished", Context);
+  expand(PRK, <<"quic finished">>, Context);
 derive_secret(derived, PRK, Context) ->
   %% TLS 1.3 derive secret.
-  expand(PRK, "quic derived", Context).
+  expand(PRK, <<"quic derived">>, Context).
 
 
 -spec expand(keys, PRK) -> Result when
@@ -1672,31 +1185,32 @@ derive_secret(derived, PRK, Context) ->
 %% Expands the keys and ivs at each encryption level.
 
 expand(keys, PRK) ->
-  {expand(PRK, "quic key", <<>>),
-   expand(PRK, "quic iv", <<>>)}.
+  {expand(PRK, <<"quic key">>, <<>>),
+   expand(PRK, <<"quic iv">>, <<>>)}.
 
 
 -spec expand(PRK, Label, Context) -> Secret when
     PRK :: binary(),
-    Label :: iodata(),
+    Label :: binary(),
     Context :: binary(),
     Secret :: binary().
 %% Only using 32 byte hash length with sha256.
 %% Also with the hkdf library.
-expand(PRK, Label, Context) when is_list(Label) ->
-  C_Hash = crypto:hash(sha256, Context),
-  expand(PRK, <<Label/binary>>, C_Hash);
+%% expand(PRK, Label, Context) when is_list(Label) ->
+%%   C_Hash = crypto:hash(sha256, Context),
+%%   expand(PRK, <<Label/binary>>, C_Hash);
 
 expand(PRK, Label, Context) ->
+  C_Hash = crypto:hash(sha256, Context),
   Label_Len = byte_size(Label),
-  Context_Len = byte_size(Context),
-  Info = <<32:16, Label_Len:8, Label/binary, Context_Len:8, Context/binary>>,
+  Context_Len = byte_size(C_Hash),
+  Info = <<32:16, Label_Len:8, Label/binary, Context_Len:8, C_Hash/binary>>,
   hkdf:expand(sha256, PRK, Info, 32).
 
 
--spec get_nonce(Pkt_Num, PRK) -> Nonce when
-    Pkt_Num :: non_neg_integer(),
+-spec get_nonce(PRK, Pkt_Num) -> Nonce when
     PRK :: binary(),
+    Pkt_Num :: non_neg_integer(),
     Nonce :: binary().
 %% Section 5.2 of QUIC-TLS
 %% "The nonce, N, is formed by combining the packet
@@ -1704,13 +1218,10 @@ expand(PRK, Label, Context) ->
 %% reconstructed QUIC packet number in network byte order are left-
 %% padded with zeros to the size of the IV.  The exclusive OR of the
 %% padded packet number and the IV forms the AEAD nonce."
-%% This is equivalent to incrementing the nonce by the packet number.
-get_nonce(Pkt_Num, PRK) ->
+get_nonce(PRK, Pkt_Num) ->
   %% Take the last 4 bytes of the PRK to XOR with the Pkt_Num.
-  <<P1:28/unit:8, P2:4/unit:8>> = PRK,
+  <<P1:28/binary, P2:4/binary>> = PRK,
   %% PRK should be exactly 32 bytes long.
-  %% This might make more sense as a guard instead of an assert failure.
-  %% Or just move to function clause.
   <<P1/binary, (bitxor(<<Pkt_Num:4/unit:8>>, P2))/binary>>.
 
 
@@ -1742,19 +1253,20 @@ encrypt(Packet, PRK, Nonce, Header) ->
   crypto:block_encrypt(aes_gcm, PRK, Nonce, {Header, Packet}).
 
 
--spec decrypt(Encrypted, PRK, Nonce, Header) -> Frames when
+-spec decrypt(Encrypted, PRK, Nonce, Header, Tag) -> Frames when
     Encrypted :: binary(),
     PRK :: binary(),
     Nonce :: binary(),
     Header :: binary(),
-    Frames :: binary().
+    Tag :: binary(),
+    Frames :: binary() | error.
 
-decrypt(Encrypted, PRK, Nonce, Header) ->
-  crypto:block_decrypt(aes_gcm, PRK, Nonce, {Header, Encrypted, 16}).
+decrypt(Encrypted, PRK, Nonce, Header, Tag) ->
+  crypto:block_decrypt(aes_gcm, PRK, Nonce, {Header, Encrypted, Tag}).
 
 
 -spec encrypt_pkt_num(Pkt_Num, Pkt_Secret, Enc_Tag) -> Pkt_Enc when
-    Pkt_Num :: non_neg_integer(),
+    Pkt_Num :: binary(),
     Pkt_Secret :: binary(),
     Enc_Tag :: binary(),
     Pkt_Enc :: binary().
@@ -1764,72 +1276,8 @@ decrypt(Encrypted, PRK, Nonce, Header) ->
 %% make the corresponding sampling and decryption easier.
 encrypt_pkt_num(Pkt_Num, Secret, Enc_Tag) ->
   State = crypto:stream_init(aes_ctr, Secret, Enc_Tag),
-  {_New_State, Cipher_Num} = crypto:stream_encrypt(State, <<Pkt_Num:32>>),
+  {_New_State, Cipher_Num} = crypto:stream_encrypt(State, Pkt_Num),
   Cipher_Num.
-
-
-
--spec decrypt_pkt_num(Type, Encrypted, Secret) -> Result when
-    Type :: {short, Dest_Conn_Len} |
-            long,
-    Dest_Conn_Len :: non_neg_integer(),
-    Encrypted :: binary(),
-    Secret :: binary(),
-    Result :: {ok, Pkt_Num, Header, Enc_Frames},
-    Pkt_Num :: non_neg_integer(),
-    Header :: binary(),
-    Enc_Frames :: binary().
-%% The short packet header skips one-byte for the packet_type,
-%% the length of the destination connection id, and 4 bytes for the
-%% packet_number then samples the first 16 bytes.
-%% The decryption returns the entire decrypted header with the packet number
-%% in order to ease decryption of the remainder of the packet.
-decrypt_pkt_num({short, Dest_Conn_Len}, Enc_Pkt, Secret) ->
-
-  <<Type:8, Dest_Conn:Dest_Conn_Len/unit:8, Enc_Pkt_Num:32, 
-    Sample:16/unit:8, Enc_Frames/binary>> = Enc_Pkt,
-
-  State = crypto:stream_init(aes_ctr, Secret, <<Sample:16/unit:8>>),
-  {_New_State, Pkt_Num} = crypto:stream_decrypt(State, <<Enc_Pkt_Num:32>>),
-  {ok, Pkt_Num, 
-   <<Type:8, Dest_Conn:Dest_Conn_Len/unit:8, Pkt_Num:32>>, 
-   Enc_Frames};
-
-%% The long packet header skips one-byte for the packet_type, four bytes for the
-%% version number, one-byte for the dest_conn_len and src_conn_len, the lengths of 
-%% the dest_conn and src_conn, the payload length, and 4 bytes for the packet number. 
-%% The variable length payload makes this slightly more complicated.
-%% Might need to add a separate case for 0 length Dest and Src connection ids;
-decrypt_pkt_num(long, <<Type:8, VX:32, Dest_Conn_Len:4, Src_Conn_Len:4,
-                        Dest_Conn_ID:Dest_Conn_Len/unit:8,
-                        Src_Conn_ID:Src_Conn_Len/unit:8,
-                        Payload_Flag:2, Rest/bits>>,
-                Secret) ->
-  %% Section 7.1 of QUIC Transport.
-  Payload_Len =
-    case Payload_Flag of
-      0 ->
-        6;
-      1 ->
-        14;
-      2 ->
-        30;
-      3 ->
-        62
-    end,
-  
-  <<Payload:Payload_Len, Enc_Pkt_Num:32, Tag:16/unit:8, Enc_Frames/binary>> = Rest,
-  
-  State = crypto:stream_init(aes_ctr, Secret, <<Tag:16/unit:8>>),
-  {_New_State, Pkt_Num} = crypto:stream_decrypt(State, <<Enc_Pkt_Num:32>>),
-
-  Header = <<Type:8, VX:32, Dest_Conn_Len:4, Src_Conn_Len:4,
-             Dest_Conn_ID:Dest_Conn_Len/unit:8,
-             Src_Conn_ID:Src_Conn_Len/unit:8,
-             Payload_Flag:2, Payload:Payload_Len,
-             Pkt_Num:32>>,
-
-  {ok, Pkt_Num, Header, Enc_Frames}.
 
 
 -spec bitxor(binary(), binary()) -> binary().
@@ -1889,7 +1337,39 @@ shared_secret(Other_Pub_Key, Priv_Key) ->
 %%
 %%
 %%
-%%
+%% TODO: Clean this up a bit.
+
+-spec form_frame(Type, Data) -> Result when
+    Type :: client_hello |
+            server_hello |
+            encrypted_exts |
+            certificate |
+            cert_verify |
+            finished,
+    Data :: #quic_data{},
+    Result :: {ok, Crypto_Data},
+    Crypto_Data :: {Type, Offset, binary()},
+    Offset :: non_neg_integer().
+
+form_frame(Crypto_Frame_Type, 
+           #quic_data{crypto =
+                        #quic_crypto{
+                           init_offsets = {Init_Send, _},
+                           handshake_offsets = {Hand_Send, _}
+                          }
+                     } = Data) ->
+  %% Dialyzer does not like Frame = Crypto_Frame_Type(Data),
+  Crypto_Data = 
+    case Crypto_Frame_Type of
+      client_hello -> {Crypto_Frame_Type, Init_Send, client_hello(Data)};
+      server_hello -> {Crypto_Frame_Type, Init_Send, server_hello(Data)};
+      encrypted_exts -> {Crypto_Frame_Type, Hand_Send, encrypted_exts(Data)};
+      certificate -> {Crypto_Frame_Type, Hand_Send, certificate(Data)};
+      cert_verify -> {Crypto_Frame_Type, Hand_Send, cert_verify(Data)};
+      finished -> {Crypto_Frame_Type, Hand_Send, finished(Data)}
+    end,
+
+  {ok, Crypto_Data}.
 
 %% The lengths on the client hello, server hello, encrypted extensions need to be
 %% double checked, but they should be good.
@@ -1902,25 +1382,26 @@ client_hello(#quic_data{
                             pub_key = Pub_Key
                            },
                 params = Params
-                }) ->
+               }) ->
   %% Section 4.1.2 in TLS 1.3
   
   Cipher_Suites = <<16#13:16, 16#1:16>>, %% Section B.4 in TLS 1.3
   %% I'm hard-coding things until I get most everything working.
   %% Other ciphers/params will be supported eventually.
   Cipher_Len = byte_size(Cipher_Suites),
-
+  Random = crypto:strong_rand_bytes(32),
+  
   Hello = <<16#0303:16,
-            (crypto:strong_rand_bytes(32)):32/unit:8, %% Random Nonce, Ignored on Server side, but required.
+            Random/binary, %% Random Nonce, Ignored on Server side, but required.
             0:8, %% Legacy_Session_ID_Len set to 0 since not used.
             Cipher_Len:16,
-            Cipher_Suites:Cipher_Len/unit:8,
+            Cipher_Suites/binary,
             0:8>>, %% Legacy_Compression_methods. Must be one-byte of 0.
   
-  TLS_Ext = encode_tls_extensions(client, Pub_Key),
+  TLS_Ext = encode_client_extensions(Pub_Key),
   TLS_Ext_Len = byte_size(TLS_Ext),
   
-  Quic_Ext = encode_extensions(client, Version, Params),
+  Quic_Ext = encode_client_extensions(Version, Params),
   Quic_Ext_Len = byte_size(Quic_Ext),
   
   Ext_Len = TLS_Ext_Len + Quic_Ext_Len + 2,
@@ -1947,15 +1428,17 @@ server_hello(#quic_data{
   %% more to come later.
   Cipher_Len = byte_size(Cipher_Suites),
 
+  Random = crypto:strong_rand_bytes(32),
+
   Hello = <<16#0303:16,
-            (crypto:strong_rand_bytes(32)):32/unit:8, %% Random Nonce
+            Random/binary, %% Random Nonce
             0:8, %% legacy_session_id_echo; hardcoded as 0 in client hello.
             %% TODO: add better support here.
             Cipher_Len:16,
-            Cipher_Suites:Cipher_Len/unit:8,
+            Cipher_Suites/binary,
             0:8>>, %% legacy_compression_methods is 0
 
-  TLS_Hello_Ext = encode_tls_extensions(server_hello, Pub_Key),
+  TLS_Hello_Ext = encode_server_hello_extensions(Pub_Key),
 
   TLS_Hello_Len = byte_size(TLS_Hello_Ext),
 
@@ -1973,9 +1456,9 @@ encrypted_exts(#quic_data{
                               },
                   params = Params
                  }) ->
-  TLS_Enc_Ext = encode_tls_extensions(encrypted_ext, none),
+  TLS_Enc_Ext = encode_encrypted_extensions(<<>>),
   
-  Quic_Extensions = encode_extensions(server, [Neg_Vx | Other_Vx], Params),
+  Quic_Extensions = encode_server_extensions([Neg_Vx | Other_Vx], Params),
   Quic_Ext_Len = byte_size(Quic_Extensions),
   
   TLS_Enc_Len = byte_size(TLS_Enc_Ext),
@@ -1988,17 +1471,17 @@ encrypted_exts(#quic_data{
     Quic_Extensions/binary>>.
 
 
-encode_extensions(client, Version,
-                  #quic_params{
-                     init_max_stream_data = Init_Stream_Data,
-                     init_max_data = Init_Max_Data,
-                     init_max_bi_streams = Max_Bi_Stream,
-                     idle_timeout = Timeout,
-                     init_max_uni_streams = Max_Uni_Stream,
-                     max_packet_size = Max_Pkt_Size,
-                     ack_delay_exp = Ack_Delay_Exp,
-                     migration = Mig
-                    }) ->
+encode_client_extensions(Version,
+                         #quic_params{
+                            init_max_stream_data = Init_Stream_Data,
+                            init_max_data = Init_Max_Data,
+                            init_max_bi_streams = Max_Bi_Stream,
+                            idle_timeout = Timeout,
+                            init_max_uni_streams = Max_Uni_Stream,
+                            max_packet_size = Max_Pkt_Size,
+                            ack_delay_exp = Ack_Delay_Exp,
+                            migration = Mig
+                           }) ->
   %% The separation by client/server is due to two components that the server
   %% can utilize, but the client cannot. Not really important now, but will be
   %% in the future when support is expanded.
@@ -2015,33 +1498,32 @@ encode_extensions(client, Version,
   
   Param_Len = byte_size(Params),
   
-  <<Version:32, Param_Len:16, Params/binary>>;
+  <<Version/binary, Param_Len:16, Params/binary>>.
 
-encode_extensions(server, [Version], Params) ->
-  <<Version:32, 0:16, (encode_extensions(server, [], Params))/binary>>;
+encode_server_extensions([Version], Params) ->
+  <<Version/binary, 0:16, (encode_server_extensions([], Params))/binary>>;
 
-encode_extensions(server, [Version | Versions], Params) when length(Versions) > 0 ->
+encode_server_extensions([Version | Versions], Params) when length(Versions) > 0 ->
   Vx_Len = length(Versions) * 4,
-  %% Times for since each Version is 4 bytes (32-bits).
+  %% Times four since each Version is 4 bytes (32-bits).
   Vxs = list_to_binary(Versions),
   
-  <<Version:32, Vx_Len:16, Vxs/binary, 
-    (encode_extensions(server, [], Params))/binary>>;
+  <<Version/binary, Vx_Len:16, Vxs/binary, 
+    (encode_server_extensions([], Params))/binary>>;
 
-encode_extensions(server, [], 
-                  #quic_params{
-                     init_max_stream_data = Init_Stream_Data,
-                     init_max_data = Init_Max_Data,
-                     init_max_bi_streams = Max_Bi_Stream,
-                     idle_timeout = Timeout,
-                     preferred_address = Addr,
-                     init_max_uni_streams = Max_Uni_Stream,
-                     max_packet_size = Max_Pkt_Size,
-                     ack_delay_exp = Ack_Delay_Exp,
-                     migration = Mig,
-                     reset_token = Token
-                    }) ->
-
+encode_server_extensions([], 
+                         #quic_params{
+                            init_max_stream_data = Init_Stream_Data,
+                            init_max_data = Init_Max_Data,
+                            init_max_bi_streams = Max_Bi_Stream,
+                            idle_timeout = Timeout,
+                            preferred_address = Addr,
+                            init_max_uni_streams = Max_Uni_Stream,
+                            max_packet_size = Max_Pkt_Size,
+                            ack_delay_exp = Ack_Delay_Exp,
+                            migration = Mig,
+                            reset_token = Token
+                           }) ->
   Params = <<(encode_param(0, Init_Stream_Data))/binary,
              (encode_param(1, Init_Max_Data))/binary,
              (encode_param(2, Max_Bi_Stream))/binary,
@@ -2064,25 +1546,25 @@ encode_param(0, Value) ->
   %% Init Max Stream Data
   %% 32-bit value if present
   Val_Len = byte_size(Value),
-  <<0:16, Val_Len:16, Value:32>>;
+  <<0:16, Val_Len:16, Value/binary>>;
 
 encode_param(1, Value) ->
   %% Init Max Data
   %% 32-bit value if present
   Val_Len = byte_size(Value),
-  <<1:16, Val_Len:16, Value:32>>;
+  <<1:16, Val_Len:16, Value/binary>>;
 
 encode_param(2, Value) ->
   %% Init Max Bidirectional Stream Id
   %% 16-bit value if present
   Val_Len = byte_size(Value),
-  <<2:16, Val_Len:16, Value:16>>;
+  <<2:16, Val_Len:16, Value/binary>>;
 
 encode_param(3, Value) ->
   %% Idle Timeout
   %% 16-bit value if present
   Val_Len = byte_size(Value),
-  <<2:16, Val_Len:16, Value:16>>;
+  <<2:16, Val_Len:16, Value/binary>>;
 
 encode_param(4, #quic_pref_addr{
                    address = Address,
@@ -2119,25 +1601,25 @@ encode_param(5, Value) ->
   %% Max Packet Size
   %% 16-bit integer
   Val_Len = byte_size(Value),
-  <<5:16, Val_Len:16, Value:16>>;
+  <<5:16, Val_Len:16, Value/binary>>;
 
 encode_param(6, Value) ->
   %% Stateless Reset Token
   %% 16 bytes in size
   Val_Len = byte_size(Value),
-  <<6:16, Val_Len:16, Value:16/unit:8>>;
+  <<6:16, Val_Len:16, Value/binary>>;
 
 encode_param(7, Value) ->
   %% Ack Delay Exponent
   %% 8 bit value
   Val_Len = byte_size(Value),
-  <<7:16, Val_Len:16, Value:8>>;
+  <<7:16, Val_Len:16, Value/binary>>;
 
 encode_param(8, Value) ->
   %% Init Max Unidirectional Streams
   %% 16 bit value
   Val_Len = byte_size(Value),
-  <<8:16, Val_Len:16, Value:16>>;
+  <<8:16, Val_Len:16, Value/binary>>;
 
 encode_param(9, true) ->
   %% Migration. It either exists or doesn't exist.
@@ -2152,22 +1634,29 @@ encode_param(_Len, _Value) ->
   %quic_packet:encode_param(Len, Value).
   << >>.
 
-
+%% -spec encode_tls_extensions(Type, Info) -> Frame when
+%%     Type :: server_hello | 
+%% %%            encrypted_exts | 
+%%             client,
+%%     Info :: any(),
+%%     Frame :: binary().
+    
 %% Returns the server-side TLS extensions for the server hello and
 %% encrypted extension messages.
 %% See table in section 4.2 for which parameter goes in which
 %% These are hard-coded for now, will be expanded later after everything else is working.
-encode_tls_extensions(server_hello, Pub_Key) ->
+
+encode_server_hello_extensions(Pub_Key) ->
   %% Included: key_share and supported_versions.
   %% Section 4.2.8 and 4.2.1 respectively of TLS 1.3
   %% key_share corresponds with ecdh, secp256r1
   %% Future support will eventually be added for others.
   %% Not included: pre_shared_key
   Pub_Len = byte_size(Pub_Key),
-  <<51:16, (Pub_Len + 4):16, 16#0017:16, Pub_Len:16, Pub_Key:Pub_Len/binary, 
-    43:16, 2:16, 16#0304:16>>;
+  <<51:16, (Pub_Len + 4):16, 16#0017:16, Pub_Len:16, Pub_Key/binary, 
+    43:16, 2:16, 16#0304:16>>.
 
-encode_tls_extensions(encrypted_exts, _) ->
+encode_encrypted_extensions(_) ->
   %% Included: server_cert_type (X509), supported_groups
   %% 0x0017 is for group ecdh secp256r1
   %% Not included:  server_name, max_fragment_length,
@@ -2175,11 +1664,11 @@ encode_tls_extensions(encrypted_exts, _) ->
   %%    client_cert_type, early_data
   
   <<20:16, 1:16, 0:8,
-    10:16, 2:16, 16#0017:16>>;
+    10:16, 2:16, 16#0017:16>>.
 
 %% Returns the client-side TLS extensions for the client hello messages.
 %% Corresponds to the above server function, see there for comments.
-encode_tls_extensions(client, Pub_Key) ->
+encode_client_extensions(Pub_Key) ->
   
   Pub_Len = byte_size(Pub_Key),
   
@@ -2192,7 +1681,7 @@ encode_tls_extensions(client, Pub_Key) ->
   %%               pre_shared_key, psk_key_exchange_modes, cookie (not needed with quic),
   %%               cert_authorities, post_handshake_auth.
 
-  <<51:16, (Pub_Len + 4):16, 16#0017:16, Pub_Len:16, Pub_Key:Pub_Len/binary,
+  <<51:16, (Pub_Len + 4):16, 16#0017:16, Pub_Len:16, Pub_Key/binary,
     43:16, 2:16, 16#0304:16, 
     20:16, 1:16, 0:8, 
     %% 0x0403 is the ecdsa_secp256r1_sha256 signature algorithm
@@ -2204,6 +1693,12 @@ encode_tls_extensions(client, Pub_Key) ->
 %% Section 4.4.2 of TLS13
 %% This will need updating when support for RawPublicKey certificates is added.
 %% Cert_Chain is in reverse order of what we need.
+
+certificate(#quic_data{type = Type,
+                       crypto = #quic_crypto{cert_chain = Cert_Chain,
+                                             cert = Cert}}) ->
+  encode_tls_cert(Type, Cert_Chain, Cert).
+
 encode_tls_cert(server, Cert_Chain0, Peer_Cert) when is_list(Cert_Chain0) ->
   %% Handles a chain of certificates
   %% Must all be an x509 certificate, at the moment
@@ -2216,7 +1711,6 @@ encode_tls_cert(server, Cert_Chain0, Peer_Cert) when is_list(Cert_Chain0) ->
                     {<<Bin/binary, 0:8, Cert_Len:24, Cert/binary>>, Len + Cert_Len + 1}
                 end,
                 {<<>>, 0}, [Peer_Cert | Cert_Chain]),
-
 
   Len = Chain_Len + 3 + 1,
   %% 3 bytes for the list length, 1 for the cert_request_context
@@ -2244,6 +1738,9 @@ encode_tls_cert(server, Cert_Chain0, Peer_Cert) when is_list(Cert_Chain0) ->
 %% Section 4.4.3
 %% Signature Algorithm is ecdsa_secp256r1_sha256 for now.
 %% I'm not sure this one is correct.
+cert_verify(#quic_data{type = Type} = Data) ->
+  encode_tls_cert_verify(Type, Data).
+  
 encode_tls_cert_verify(server, #quic_data{
                                   crypto = #quic_crypto{
                                               transcript = Transcript,
@@ -2260,7 +1757,7 @@ encode_tls_cert_verify(server, #quic_data{
   %% Includes: Server Hello, Encrypted Extensions, and Certificate at this point.
   Verify_Hash = crypto:hash(sha256, Transcript),
   
-  Verify_Content = <<Leading:256, Leading:256,
+  Verify_Content = <<Leading/binary, Leading/binary,
                      Context_String/binary, 0:8,
                      Verify_Hash/binary>>,
   
@@ -2277,6 +1774,11 @@ encode_tls_cert_verify(server, #quic_data{
 %% The finished tls record
 %% Section 4.4.4
 %% Same for both server and client.
+finished(#quic_data{crypto = 
+                      #quic_crypto{transcript = Transcript,
+                                   pub_key = Key}}) ->
+  encode_tls_fin(Key, Transcript).
+
 encode_tls_fin(Key, Transcript) ->
   %% Transcript includes all of the sent handshake messages up to now.
   %% Client/Server Hello, Encrypted Extensions, Certificate, Cert Verify
@@ -2288,18 +1790,7 @@ encode_tls_fin(Key, Transcript) ->
 
   Len = Fin_Len + 2,
   %% 20 is the finished message byte number.
-  <<20:8, Len:24, Fin_Len:16, Fin_Verify:32>>.
-
-
-%% Section 7.1 of QUIC.
-to_var_length(Num) when Num < 63 ->
-  <<0:2, Num:6>>;
-to_var_length(Num) when Num < 16383 ->
-  <<1:2, Num:14>>;
-to_var_length(Num) when Num < 1073741823 ->
-  <<2:2, Num:30>>;
-to_var_length(Num) ->
-  <<3:3, Num:62>>.
+  <<20:8, Len:24, Fin_Len:16, Fin_Verify/binary>>.
 
 get_var_length(0) ->
   6;
@@ -2308,9 +1799,7 @@ get_var_length(1) ->
 get_var_length(2) ->
   30;
 get_var_length(3) ->
-  62;
-get_var_length(_) ->
-  error.
+  62.
 
 %% Specific function for parsing Crypto Frames.
 %% This function returns a #tls_record of the information in the tls message
@@ -2322,15 +1811,15 @@ get_var_length(_) ->
     Frames :: binary(),
     Result :: {#tls_record{}, Frames}.
 
-parse_crypto_frame(<<16#18:16, Offset_Flag:2, Rest/binary>>) ->
+parse_crypto_frame(<<16#18:16, Offset_Flag:2, Rest/bits>>) ->
   %% 0x18 is the type identifier for the crypto frame.
   Offset_Len = get_var_length(Offset_Flag),
   
-  <<Offset:Offset_Len, Len_Flag:2, Rest1/binary>> = Rest,
+  <<Offset:Offset_Len, Len_Flag:2, Rest1/bits>> = Rest,
   
   Length_Len = get_var_length(Len_Flag),
   
-  <<Length:Length_Len, Crypto_Data:Length/unit:8, Rest2/binary>> = Rest1,
+  <<Length:Length_Len, Crypto_Data:Length/binary, Rest2/binary>> = Rest1,
   
   TLS_Info = parse_crypto_frame(Crypto_Data, #tls_record{offset = Offset,
                                                         length = Length,
@@ -2373,8 +1862,8 @@ parse_client_hello(<<16#0303:16, _Random:32/unit:8, 0:8, Cipher_Len:16,
     Cipher_Len rem 2 == 0 ->
   
   Ciphers = lists:reverse(
-              binary_foldl(fun(Ciph, Acc) -> [cipher_to_atom(Ciph) | Acc] end,
-                           [], Ciphers0, 2)),
+              quic_utils:binary_foldl(fun(Ciph, Acc) -> [cipher_to_atom(Ciph) | Acc] end,
+                                      [], Ciphers0, 2)),
   
   parse_tls_extensions(Extensions, 
                        TLS_Info#tls_record{
@@ -2393,8 +1882,8 @@ parse_server_hello(<<16#0303:16, _Random:32/unit:8, 0:8, Cipher_Len:16,
     Cipher_Len rem 2 == 0 ->
 
   Ciphers = lists:reverse(
-              binary_foldl(fun(Ciph, Acc) -> [cipher_to_atom(Ciph) | Acc] end,
-                           [], Ciphers0, 2)),
+              quic_utils:binary_foldl(fun(Ciph, Acc) -> [cipher_to_atom(Ciph) | Acc] end,
+                                      [], Ciphers0, 2)),
   
   parse_tls_extensions(Extensions, 
                        TLS_Info#tls_record{
@@ -2481,7 +1970,7 @@ parse_quic_extensions(<<16#ffa5:16, _Len:16, Vx:4/binary, Other_Vxs:8,
                         Vxs:Other_Vxs/binary, Param_Len:16, Params:Param_Len/binary,
                         Rest/binary>>, TLS_Info0, encrypted_exts) ->
 
-  Versions = lists:reverse(binary_foldl(fun(Version, Acc) -> [Version | Acc] end,
+  Versions = lists:reverse(quic_utils:binary_foldl(fun(Version, Acc) -> [Version | Acc] end,
                                         [], Vxs, 4)),
 
   TLS_Info = TLS_Info0#tls_record{quic_version = Vx,
@@ -2611,8 +2100,8 @@ parse_tls_extension(supported_groups, <<Groups0/binary>>, TLS_Info, TLS_Type) wh
   %% Each group is 2 bytes
 
   Groups = lists:reverse(
-             binary_foldl(fun(Group, Acc) -> [group_to_atom(Group) | Acc] end,
-                          [], Groups0, 2)),
+             quic_utils:binary_foldl(fun(Group, Acc) -> [group_to_atom(Group) | Acc] end,
+                                     [], Groups0, 2)),
 
   TLS_Info#tls_record{supported_groups = Groups};
 
@@ -2639,8 +2128,8 @@ parse_tls_extension(supported_versions, Versions0, TLS_Info, client_hello) ->
   %% For Quic this cannot include versions below tls 1.3 either 
   %% (checked in validate_tls).
   Versions = lists:reverse(
-               binary_foldl(fun(<<Version:2/unit:8>>, Acc) -> [Version | Acc] end, 
-                            [], Versions0, 2)),
+               quic_utils:binary_foldl(fun(<<Version:2/unit:8>>, Acc) -> [Version | Acc] end, 
+                                       [], Versions0, 2)),
   
   TLS_Info#tls_record{tls_supported_versions = Versions};
 
@@ -2660,8 +2149,8 @@ parse_tls_extension(signature_algs, Algs, TLS_Info, client_hello) ->
   %% Is a list of supported signature algorithms Each are two bytes in size.
 
   Sign_Algs = lists:reverse(
-                binary_foldl(fun(Alg, Acc) -> [signature_to_atom(Alg) | Acc] end,
-                             [], Algs, 2)),
+                quic_utils:binary_foldl(fun(Alg, Acc) -> [signature_to_atom(Alg) | Acc] end,
+                                        [], Algs, 2)),
   TLS_Info#tls_record{signature_algs = Sign_Algs};
 
 parse_tls_extension(_, _, _, _) ->
@@ -2725,19 +2214,4 @@ valid_params(#quic_params{}) ->
 
 valid_params(_) ->
   false.
-
-
-%% Folds over a binary, Split bytes at a time and applies a function to the
-%% Accumulator and the value of Split bytes. Acts like lists:foldl, but it needs the
-%% number of bytes from the binary to use at each iteration.
-%% Crashes if the size of the binary rem Split is not 0.
-%% May be faster if the binary is just split into a list of values
-%% and then folded over using lists:foldl.
-binary_foldl(_Fun, Acc, <<>>, _) ->
-  Acc;
-
-binary_foldl(Fun, Acc, Binary, Split) ->
-  <<X:Split/unit:8, Rest/binary>> = Binary,
-  binary_foldl(Fun, Fun(X, Acc), Rest, Split).
-
 

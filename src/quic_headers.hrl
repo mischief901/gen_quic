@@ -1,20 +1,27 @@
 %% This comprises of the define statements needed to build default quic 
 %% packet and frame headers.
 
-%% Set this to true to add debug statements places. Comment it out otherwise.
--define(DEBUG, true).
 
 %% I will definitely have to make sure that these are correctly used throughout and
 %% probably prune them down to have fewer repeated fields.
+
+-type stream_id() :: non_neg_integer().
+-type offset() :: non_neg_integer().
+-type conn_id() :: binary().
+
+%% Maybe change error_code to an atom to be more descriptive.
+-type error_code() :: non_neg_integer().
+
+-export_type([stream_id/0, offset/0, conn_id/0, error_code/0]).
+
 -record(quic_conn,
         {
-         socket        :: inet:socket(),
-         address       :: inet:socket_address() |
-                          inet6:socket_address(),
-         port          :: inet:port_number(),
-         owner         :: pid(),
-         dest_conn_ID  :: non_neg_integer(),
-         src_conn_ID   :: non_neg_integer()
+         socket        :: undefined | gen_quic:socket(),
+         address       :: undefined | inet:ip_address(),
+         port          :: undefined | inet:port_number(),
+         owner         :: undefined | pid(),
+         dest_conn_ID  :: undefined | conn_id(),
+         src_conn_ID   :: undefined | conn_id()
         }).
 
 -type tls_version() :: non_neg_integer().
@@ -24,227 +31,287 @@
 -record(quic_crypto, 
         {
          state  :: atom(),
-         %% Offsets are initialized at -1 since the offset of the first stream byte is 0.
-         %% New record is in order when the tls offset is 1 more than the crypto offset.
-         %% Send Offsets are initialized at 0 and incremented after use.
-         init_offsets      = {0, -1} :: {integer(), integer()},
-         handshake_offsets = {0, -1} :: {integer(), integer()},
-         protected_offsets = {0, -1} :: {integer(), integer()},
-         init_secret         :: binary(),
-         pkt_num_init_secret :: binary(),
-         client_init_secret  :: binary(),
-         server_init_secret  :: binary(),
-         client_init_key     :: binary(),
-         client_init_iv      :: binary(),
-         server_init_key     :: binary(),
-         server_init_iv      :: binary(),
-         handshake_secret    :: binary(),
-         client_early_key    :: binary(),
-         client_early_iv     :: binary(),
-         pkt_num_handshake_secret :: binary(),
-         client_handshake_secret  :: binary(),
-         server_handshake_secret  :: binary(),
-         client_handshake_key     :: binary(),
-         client_handshake_iv      :: binary(),
-         server_handshake_key     :: binary(),
-         server_handshake_iv      :: binary(),
-         protected_secret         :: binary(),
-         pkt_num_protected_secret :: binary(),
-         client_protected_secret  :: binary(),
-         server_protected_secret  :: binary(),
-         client_protected_key     :: binary(),
-         client_protected_iv      :: binary(),
-         server_protected_key     :: binary(),
-         server_protected_iv      :: binary(),
+         %% Offsets are initialized at 0 and incremented after use.
+         init_offsets      = {0, 0} :: {non_neg_integer(), non_neg_integer()},
+         handshake_offsets = {0, 0} :: {non_neg_integer(), non_neg_integer()},
+         protected_offsets = {0, 0} :: {non_neg_integer(), non_neg_integer()},
+         init_secret         :: undefined | binary(),
+         pkt_num_init_secret :: undefined | binary(),
+         client_init_secret  :: undefined | binary(),
+         server_init_secret  :: undefined | binary(),
+         client_init_key     :: undefined | binary(),
+         client_init_iv      :: undefined | binary(),
+         server_init_key     :: undefined | binary(),
+         server_init_iv      :: undefined | binary(),
+         handshake_secret    :: undefined | binary(),
+         client_early_key    :: undefined | binary(),
+         client_early_iv     :: undefined | binary(),
+         pkt_num_handshake_secret :: undefined | binary(),
+         client_handshake_secret  :: undefined | binary(),
+         server_handshake_secret  :: undefined | binary(),
+         client_handshake_key     :: undefined | binary(),
+         client_handshake_iv      :: undefined | binary(),
+         server_handshake_key     :: undefined | binary(),
+         server_handshake_iv      :: undefined | binary(),
+         protected_secret         :: undefined | binary(),
+         pkt_num_protected_secret :: undefined | binary(),
+         client_protected_secret  :: undefined | binary(),
+         server_protected_secret  :: undefined | binary(),
+         client_protected_key     :: undefined | binary(),
+         client_protected_iv      :: undefined | binary(),
+         server_protected_key     :: undefined | binary(),
+         server_protected_iv      :: undefined | binary(),
          transcript = <<>>        :: binary(),
          tls_version = 16#0304    :: tls_version(),
-         cert_chain    :: [binary()], %% This starts with the root cert and leads to the peer cert.
-         cert          :: binary(),
-         cert_priv_key :: binary(),
-         pub_key       :: binary(),
-         priv_key      :: binary(), %% If not generated by/for a certificate (ephemeral)
-         other_pub_key :: binary(),
-         cipher        :: {atom(), atom()},
-         signature_alg :: {atom(), atom(), atom()},
-         group         :: group()
+         cert_chain    :: undefined | [binary()], %% This starts with the root cert and leads to the peer cert.
+         cert          :: undefined | binary(),
+         cert_priv_key :: undefined | binary(),
+         pub_key       :: undefined | binary(),
+         priv_key      :: undefined | binary(), %% If not generated by/for a certificate (ephemeral)
+         other_pub_key :: term(),
+         cipher        :: undefined | {atom(), atom()},
+         signature_alg :: undefined | {atom(), atom(), atom()},
+         group         :: undefined | any() %%group()
         }).
 
 
-%% These records will be used for default options given by connect
-%% or listen. Only the Server can set preferred_address and reset_token
-%% The params are communicated in the handshake messages by both parties.
+%% %% This needs some more thought.
+%% %% The idea is that largest_ack keeps track of the largest previously acked packet,
+%% %% previous_gaps is a list of packets that were missing in the previous packet,
+%% %% acks is a list of packet numbers that need to be acknowledged in the next packet,
+%% %% delay is the millisecond delay between when the first ack is added to acks and all
+%% %% the acks are sent.
+%% %%
+%% %% Previous_Gaps should be emptied after a few rounds. This is probably good
+%% %% for a streaming function to handle as a filter, but that might be too complicated.
+%% -record(quic_ack, 
+%%         {
+%%          ack_fun :: fun((Pkt_Num :: non_neg_integer()) -> Window :: binary()),
+%%          window_fun :: fun((Last_Window :: binary(), Largest_Ack :: non_neg_integer()) -> Ack_Fun :: fun(..)),
+%%          largest_ack :: non_neg_integer(),
+%%          last_window :: binary(),
+%%          ack_delay :: pos_integer(),
+%%          ack_delay_exp :: pos_integer()
+%%         }).
 
 -type group() :: {atom(), atom()}.
 
 -type version() :: binary().
 -export_type([version/0]).
 
--type quic_frame() :: #{term() => term()}.
+%% All the frame types and fields.
+%% Padding frames do not contain any information so they do not have a type.
+%% Crypto frames are covered in #tls_record{}.
+-type quic_frame() :: 
+        #{
+          type := ping,
+          binary := binary(),
+          retransmit := false
+         }
+      |
+        #{
+          type := max_data,
+          max_data := offset(),
+          binary := binary(),
+          retransmit := true
+         }
+      |
+        #{
+          type := max_stream_id,
+          max_stream_id := stream_id(),
+          binary := binary(),
+          retransmit := true
+         }
+      |
+        #{
+          type := data_blocked,
+          offset := offset(),
+          binary := binary(),
+          retransmit := true
+         }
+      |
+        #{
+          type := stream_id_blocked,
+          stream_id := stream_id(),
+          binary := binary(),
+          retransmit := true
+         }
+      |
+        #{
+          type := path_challenge | path_response,
+          challenge := binary(),
+          binary := binary(),
+          retransmit := false
+         }
+      |
+        #{
+          type := stop_sending,
+          stream_id := stream_id(),
+          binary := binary(),
+          retransmit := false
+         }
+      |
+        #{
+          type := stream_data_blocked,
+          stream_id := stream_id(),
+          offset := offset(),
+          stream_owner := 0 | 1,
+          stream_type := 0 | 1,
+          binary := binary(),
+          retransmit := true
+         }
+      | 
+        #{
+          type := max_stream_data,
+          stream_id := stream_id(),
+          max_stream_data := offset(),
+          stream_owner := 0 | 1,
+          stream_type := 0 | 1,
+          binary := binary(),
+          retransmit := true
+         }
+      |
+        #{
+          type := app_close | conn_close,
+          error_code := error_code(),
+          error_message := binary(),
+          binary := binary(),
+          retransmit := false
+         }
+      | 
+        #{
+          type := rst_stream,
+          stream_id := stream_id(),
+          error_code := error_code(),
+          binary := binary(),
+          retransmit := true
+         }
+      | 
+        #{
+          type := new_conn_id,
+          conn_id := conn_id(),
+          token := binary(),
+          sequence := integer(),
+          binary := binary(),
+          retransmit := true
+         }
+      |
+        #{
+          type := stream_open | stream_close | stream_data,
+          stream_id := stream_id(),
+          offset := offset(),
+          stream_owner := 0 | 1,
+          stream_type := 0 | 1,
+          data := binary(),
+          binary := binary(),
+          retransmit := true
+         }
+      |
+        #{
+          type := ack_frame,
+          largest_ack := non_neg_integer(),
+          smallest_ack := non_neg_integer(),
+          ack_delay := non_neg_integer(),
+          block_count := non_neg_integer(),
+          acks := [non_neg_integer()],
+          gaps := [non_neg_integer()],
+          binary := binary(),
+          retransmit := false
+         }
+      | 
+        #{type := 
+            encrypted_exts |
+          server_hello |
+          client_hello |
+          certificate |
+          cert_verify |
+          finished,
+          offset := non_neg_integer(),
+          retransmit := true,
+          binary := binary()}.
+
+
 -export_type([quic_frame/0]).
+
+%% These records will be used for default options given by connect
+%% or listen. Only the Server can set preferred_address and reset_token
+%% The params are communicated in the handshake messages by both parties.
 
 %% Currently only one version.
 -record(quic_version,
         {
-         initial_version    :: version(),
-         negotiated_version :: version(),
-         supported_versions :: [version()]
+         initial_version    :: undefined | version(),
+         negotiated_version :: undefined | version(),
+         supported_versions :: undefined | [version()]
         }).
 
 
 -record(quic_pref_addr, 
         {
-         address     :: inet:socket_address() |
-                        inet6:socket_address(),
-         port        :: inet:port_number(),
-         conn_id     :: non_neg_integer(),
-         reset_token :: binary()
+         address     :: undefined | inet:ip_address(),
+         port        :: undefined | inet:port_number(),
+         conn_id     :: undefined | conn_id(),
+         reset_token :: undefined | binary()
         }).
 
 -record(quic_params, 
         {
-         init_max_stream_data  :: non_neg_integer(),
-         init_max_data         :: non_neg_integer(),
-         idle_timeout = 600000 :: non_neg_integer(),
-         init_max_bi_streams   :: non_neg_integer(),
-         init_max_uni_streams  :: non_neg_integer(),
-         max_packet_size       :: non_neg_integer(),
+         init_max_stream_data  :: undefined | offset(),
+         init_max_data         :: undefined | offset(),
+         idle_timeout          :: undefined | non_neg_integer(),
+         init_max_bi_streams   :: undefined | non_neg_integer(),
+         init_max_uni_streams  :: undefined | non_neg_integer(),
+         max_packet_size       :: undefined | non_neg_integer(),
          ack_delay_exp = 3     :: non_neg_integer(),
-         migration = true      :: boolean(),
-         reset_token           :: binary(),
-         preferred_address     :: #quic_pref_addr{}
+         migration = true      :: undefined | boolean(),
+         reset_token           :: undefined | binary(),
+         preferred_address     :: undefined | #quic_pref_addr{}
         }).
-
-%% This needs some more thought.
-%% The idea is that largest_ack keeps track of the largest previously acked packet,
-%% previous_gaps is a list of packets that were missing in the previous packet,
-%% acks is a list of packet numbers that need to be acknowledged in the next packet,
-%% delay is the millisecond delay between when the first ack is added to acks and all
-%% the acks are sent.
-%%
-%% Previous_Gaps should be emptied after a few rounds. This is probably good
-%% for a streaming function to handle as a filter, but that might be too complicated.
--record(quic_ack,
-        {
-         largest_ack   :: non_neg_integer(),
-         previous_gaps :: [non_neg_integer()],
-         acks          :: [non_neg_integer()],
-         delay         :: non_neg_integer()
-        }).
-
 
 -record(quic_data, 
         {
          type             :: client | server,
          vx_module        :: atom(),
-         version          :: #quic_version{},
-         window_timeout   :: {reference(), 
-                              non_neg_integer()},
-         conn             :: #quic_conn{},
-         buffer = []      :: [term()], 
-         %% buffers out of order packets during handshake.
-         init_pkt_num = 0 :: non_neg_integer(),
-         hand_pkt_num = 0 :: non_neg_integer(),
-         app_pkt_num  = 0 :: non_neg_integer(),
-         %% *_pkt_num is next packet num to send
-         init_ack         :: #quic_ack{},
-         hand_ack         :: #quic_ack{},
-         app_ack          :: #quic_ack{},
-         ready            :: quic_staging:staging(),
-         priority_num     :: non_neg_integer(),
-         recv             :: {list(), list()} | 
-                             {active, Owner :: pid(), 
-                              N :: non_neg_integer()} |
-                             {active, Owner :: pid()},
-         params           :: #quic_params{},
-         current_data     :: non_neg_integer(),
+         version          :: undefined | #quic_version{},
+         conn             :: undefined | #quic_conn{},
+         pkt_nums = #{initial => {0, 0, 0},
+                      handshake => {0, 0, 0},
+                      protected => {0, 0, 0}} :: map(),
+         %% The tuple is for packet numbers to send, to receive, and largest acked.
+         timer_info       :: undefined | map(),
+         cc_info          :: undefined | map(),
+         send_queue       :: undefined | quic_staging:staging(),
+         priority_num     :: undefined | non_neg_integer(),
+         params           :: undefined | #quic_params{},
+         current_data     :: undefined | non_neg_integer(),
          %% Keeps track of how much data has been sent.
-         next_stream_id   :: non_neg_integer(),
          crypto = #quic_crypto{} :: #quic_crypto{},
-         retry_token      :: binary()
-        }).
-
-%% This is not needed anymore.
--record(quic_packet,
-        {
-         version,
-         long,
-         key_phase, %% Short only, not used
-         reserve,      %% Short only, not used
-         type,
-         dest_conn_ID_len,
-         dest_conn_ID,
-         src_conn_ID_len,
-         src_conn_ID,
-         crypto_token,
-         pkt_num,
-         ack_count = 0,
-         ack_frames = [],
-         ack_delay,
-         payload_len,
-         payload = [] %% List of quic_frame or quic_acks or quic_stream
-        }).
-
-
-
-%% This is the quic_stream state not the frame.
--record(quic_stream,
-        {
-         owner            :: pid(),
-         stream_owner     :: boolean(),
-         %% true if started by you.
-         stream_type      :: one_way | both,
-         %% Uni or bi-directional stream.
-         pack_type        :: unpacked | packed,
-         %% Are frames allowed to be packed with frames from other streams.
-         socket           :: inet:socket() | inet6:socket(),
-         socket_pid       :: pid(),
-         stream_id        :: non_neg_integer(),
-         offset = 0       :: non_neg_integer(),
-         max_data         :: non_neg_integer(),
-         recv_state       :: {atom(), [binary()], 
-                              [binary()], #{non_neg_integer() => binary()}} |
-                             {atom(), active, 
-                              true, #{non_neg_integer() => binary()}} |
-                             {atom(), active, 
-                              once, #{non_neg_integer() => binary()}} |
-                             {atom(), active, N :: non_neg_integer(),
-                              #{non_neg_integer() => binary()}}
-         %% The atom() of recv_state is whether the stream is blocked waiting for
-         %% a missing packet.
-         %% The map of non_neg_integer() => binary() is the buffered out of order
-         %% packets.
+         retry_token      :: undefined | binary()
         }).
 
 -record(tls_record,
         {
-         type :: atom(),
-         quic_version :: version(),
-         other_quic_versions :: [version()],
-         offset :: non_neg_integer(),
-         length :: non_neg_integer(),
-         legacy_version :: tls_version(),
+         type :: undefined | atom(),
+         quic_version :: undefined | version(),
+         other_quic_versions :: undefined | [version()],
+         offset :: undefined | non_neg_integer(),
+         length :: undefined | non_neg_integer(),
+         legacy_version :: undefined | tls_version(),
          tls_supported_versions = [] :: [tls_version()],
          cipher_suites = [] :: [{atom(), atom()}],
-         groups = [] :: [group()],
+         groups = [] :: [any()],
          supported_groups = [] :: [group()],
-         peer_cert :: binary(),
-         root_cert :: binary(),
+         peer_cert = <<>> :: binary(),
+         root_cert = <<>> :: binary(),
          cert_chain = [] :: [binary()],
          key_share = [] :: [{group(), binary()}],
-         signature :: binary(),
+         signature :: undefined | binary(),
          signature_algs = [] :: [{atom(), atom(), atom()}],
-         cert_verify :: binary(),
-         server_cert_type :: atom(),
-         quic_params :: #quic_params{},
-         temp_bin :: binary() 
-                %% This holds the binary of the tls record to add to the transcript 
+         cert_verify :: undefined | binary(),
+         server_cert_type :: undefined | atom(),
+         quic_params :: undefined | #quic_params{},
+         temp_bin :: undefined | binary() 
+                %% This holds the binary of the tls record to add to the transcript
                 %% after it is validated.
         }).
-
-%% Simple debugging.
--ifdef(DEBUG).
--define(DBG(Format, Args), (io:format((Format), (Args)))).
--else.
--define(DBG(Format, Args), ok).
--endif.
 

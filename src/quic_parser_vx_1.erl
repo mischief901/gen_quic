@@ -2,14 +2,14 @@
 %%% @author alex <alex@alex-Lenovo>
 %%% @copyright (C) 2018, alex
 %%% @doc
-%%%
+%%%  The ack parsing and ack_frame creation are wrong. Needs changing.
 %%% @end
 %%% Created :  6 Jun 2018 by alex <alex@alex-Lenovo>
 %%%-------------------------------------------------------------------
 -module(quic_parser_vx_1).
 
 %% API
--export([parse_packet/2]).
+-export([parse_frames/2]).
 
 -compile(inline).
 
@@ -17,23 +17,18 @@
 -include("quic_vx_1.hrl").
 
 
-parse_packet(<<1:1, Type_Bin:7, _Vx:32, Packet/bits>>, Info) ->
+-spec parse_frames(Payload, Data) -> Result when
+    Payload :: binary(),
+    Data :: #quic_data{},
+    Result :: {Data, Frames, Acks, TLS_Info} |
+              {error, Reason},
+    Frames :: quic_frame(),
+    Acks :: quic_frame(),
+    TLS_Info :: #tls_record{},
+    Reason :: gen_quic:error().
 
-  {ok, Type} = from_type(Type_Bin),
-  Packet_Info = Info#quic_packet{type=Type},
-
-  parse_next(Packet, Packet_Info, [long_header], long_header());
-
-parse_packet(<<0:1, Key:1, 1:1, 1:1, 0:1, Reserved:3, Packet/bits>>, Info) ->
-
-  Packet_Info = Info#quic_packet{key_phase=Key, reserve=Reserved},
-  parse_next(Packet, Packet_Info, [short_header], short_header());
-
-parse_packet(Other, Packet_Info) ->
-  ?DBG("Error parsing packet: ~p~n", [Other]),
-  ?DBG("Packet: ~p~n", [Packet_Info]),
-  {error, badarg}.
-
+parse_frames(<<Frames/binary>>, Data) ->
+  parse_frame(Frames, Data, []).
 
 %% These functions are the list of functions to call when a specific type is 
 %% parsed. This enables the entire packet to be parsed with optimized 
@@ -44,21 +39,6 @@ parse_packet(Other, Packet_Info) ->
 %% The last function call should always be parse_frame unless the entire 
 %% packet is parsed.
 %% Potentially move all of these into a different module.
-
-%% Long headers
-long_header() -> 
-  [parse_conn_ids, 
-   parse_var_length,
-   parse_pkt_num,
-   validate_header,
-   parse_frame].
-
-%% Short header
-short_header() -> 
-  [parse_short_id, 
-   parse_pkt_num, 
-   validate_header, 
-   parse_frame].
 
 %% Padding and Ping just loop back to parse_frame.
 padding() -> [parse_frame].
@@ -174,19 +154,6 @@ parse_next(<<Packet/bits>>, Packet_Info, Acc, [Next_Fun | Funs]) ->
       %% This adds an atom to the stack to indicate the end of an ack block.
       parse_next(Packet, Packet_Info, [end_ack_block | Acc], Funs);
 
-    parse_short_id ->
-      parse_short_id(Packet, Packet_Info, Acc, Funs, 
-                     Packet_Info#quic_packet.src_conn_ID_len);
-
-    parse_pkt_num ->
-      parse_pkt_num(Packet, Packet_Info, Acc, Funs);
-
-    parse_conn_ids ->
-      parse_conn_ids(Packet, Packet_Info, Acc, Funs);
-
-    validate_header ->
-      validate_header(Packet, Packet_Info, Acc, Funs);
-
     validate_packet ->
       validate_packet(Packet, Packet_Info, Acc, Funs);
 
@@ -209,388 +176,324 @@ parse_next(<<Packet/bits>>, Packet_Info, Acc, [Next_Fun | Funs]) ->
       parse_ack_blocks(Packet, Packet_Info, Acc, Funs);
 
     parse_token ->
-      parse_token(Packet, Packet_Info, Acc, Funs);
-
-    parse_conn_id ->
-      parse_conn_id(Packet, Packet_Info, Acc, Funs)
+      parse_token(Packet, Packet_Info, Acc, Funs)
   end;
 
 parse_next(<<>>, Packet_Info, Acc, []) ->
   validate_packet(Packet_Info, Acc);
 
 parse_next(<<>>, _Packet_Info, _Acc, Funs) ->
-  ?DBG("Error with parsing dispatch functions: ~p~n", [Funs]),
-  {error, badarg}.
-
-
-validate_header(<<Packet/bits>>, Info, [short_header], Funs) ->
-  parse_next(Packet, Info, [], Funs);
-
-validate_header(<<Packet/bits>>, Info, [Payload_Len, long_header], Funs) ->
-  parse_next(Packet, Info#quic_packet{payload_len=Payload_Len}, [], Funs);
-
-validate_header(_Other, Info, Acc, Funs) ->
-  ?DBG("Header not correctly validated: ~p~n", [Acc]),
-  ?DBG("Funs: ~p~n", [Funs]),
-  ?DBG("Packet_Info: ~p~n", [Info]),
   {error, protocol_violation}.
 
-%% Not optimizable. Called when the stream uses the remainder of the packet
-%% If any funs are remaining, an internal error is thrown.
+
+%% Called when the stream uses the remainder of the packet
+%% If any funs are remaining, a protocol violation error is thrown.
+%% TODO: Needs different name.
 validate_packet(<<Message/binary>>, Pkt_Info, Stack, []) ->
-  ?DBG("Adding remainder of Message to Stack: ~p~n", [byte_size(Message)]),
-  validate_packet(Pkt_Info, [<<Message/binary>> | Stack]);
+  validate_packet(Pkt_Info, [Message | Stack]);
 
 validate_packet(Other, Pkt_Info, Stack, Funs) ->
-  ?DBG("Packet not correctly validated: ~p~n", [Stack]),
-  ?DBG("Funs remaining: ~p~n", [Funs]),
-  ?DBG("Pkt_Info: ~p~n", [Pkt_Info]),
-  ?DBG("Binary: ~p~n", [Other]),
-  {error, internal}.
+  {error, protocol_violation}.
 
 %% Crawls through the Stack and places items into the correct records.
 %% Pushes onto Acc (putting the payload back in order)
 %% Returns when stack is empty.
+%% TODO: Add Crypto frame and crypto acc.
 validate_packet(Pkt_Info, Stack) ->
-  validate_packet(Pkt_Info, Stack, []).
+  validate_packet(Pkt_Info, Stack, [], [], none).
 
-validate_packet(Pkt_Info, [], Acc) ->
-  {ok, Pkt_Info#quic_packet{payload = Acc}};
+validate_packet(Pkt_Info, [], Acc, Ack_Frames, TLS_Info) ->
+  {ok, Pkt_Info, Acc, Ack_Frames, TLS_Info};
 
 %% 0 - item frames
-validate_packet(Pkt_Info, [ping | Rest], Acc) ->
-  validate_packet(Pkt_Info, Rest, [#quic_frame{type=ping} | Acc]);
+validate_packet(Pkt_Info, [ping | Rest], Acc, Ack_Frames, TLS_Info) ->
+  validate_packet(Pkt_Info, Rest, [#{type => ping} | Acc], Ack_Frames, TLS_Info);
 
 
 %% 1 - item frames
-validate_packet(Pkt_Info, [Max_Data, max_data | Rest], Acc) ->
-  Frame = #quic_frame{
-             type=max_data, 
-             data=Max_Data
-            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+validate_packet(Pkt_Info, [Max_Data, max_data | Rest], Acc, Ack_Frames, TLS_Info) ->
+  Frame = #{
+            type => max_data, 
+            max_data => Max_Data
+           },
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, [Max_ID, max_stream_id | Rest], Acc) ->
-  Frame = #quic_frame{
-             type=max_stream_id, 
-             data=Max_ID
-            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+validate_packet(Pkt_Info, [Max_ID, max_stream_id | Rest], Acc, Ack_Frames, TLS_Info) ->
+  Frame = #{
+            type => max_stream_id, 
+            max_stream_id => Max_ID
+           },
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, [Offset, data_blocked | Rest], Acc) ->
-  Frame = #quic_frame{
-             type=data_blocked, 
-             data=Offset
-            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+validate_packet(Pkt_Info, [Offset, data_blocked | Rest], Acc, Ack_Frames, TLS_Info) ->
+  Frame = #{
+            type => data_blocked, 
+            offset => Offset
+           },
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, [Stream_ID, stream_id_blocked | Rest], Acc) ->
-  Frame = #quic_frame{
-             type=stream_id_blocked, 
-             data=Stream_ID
+validate_packet(Pkt_Info, [Stream_ID, stream_id_blocked | Rest], Acc, Ack_Frames, TLS_Info) ->
+  Frame = #{
+            type => stream_id_blocked, 
+            stream_id => Stream_ID
             },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, [Challenge, path_challenge | Rest], Acc) ->
-  Frame = #quic_frame{
-             type=path_challenge, 
-             data=Challenge
-            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+validate_packet(Pkt_Info, [Challenge, path_challenge | Rest], Acc, Ack_Frames, TLS_Info) ->
+  Frame = #{
+            type => path_challenge, 
+            challenge => Challenge
+           },
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, [Challenge, path_response | Rest], Acc) ->
-  Frame = #quic_frame{
-             type=path_response, 
-             data=Challenge
-            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+validate_packet(Pkt_Info, [Challenge, path_response | Rest], Acc, Ack_Frames, TLS_Info) ->
+  Frame = #{
+            type => path_response, 
+            challenge => Challenge
+           },
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 %% 2 - item frames
 validate_packet(Pkt_Info, 
                 [App_Error, Stream_ID, stop_sending | Rest], 
-                Acc) ->
+                Acc, Ack_Frames, TLS_Info) ->
 
-  Frame = #quic_frame{
-             type=stop_sending, 
-             data={Stream_ID, App_Error}
-            },
+  Frame = #{
+            type => stop_sending, 
+            stream_id => Stream_ID, 
+            error_code => App_Error
+           },
 
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 validate_packet(Pkt_Info, 
                 [Offset, Stream_ID, stream_data_blocked | Rest], 
-                Acc) ->
+                Acc, Ack_Frames, TLS_Info) ->
 
   <<_:60, Type:1, Owner:1>> = <<Stream_ID:62>>,
 
-  Frame = #quic_stream{
-             stream_id = Stream_ID,
-             offset = Offset,
-             owner = Owner,
-             type = Type,
-             data = stream_data_blocked
-            },
+  Frame = #{
+            type => stream_data_blocked,
+            stream_id => Stream_ID,
+            offset => Offset,
+            stream_owner => Owner,
+            stream_type => Type
+           },
 
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 validate_packet(Pkt_Info, 
                 [Max_Stream_Data, Stream_ID, max_stream_data | Rest], 
-                Acc) ->
+                Acc, Ack_Frames, TLS_Info) ->
 
   <<_:60, Type:1, Owner:1>> = <<Stream_ID:62>>,
 
-  Frame = #quic_stream{
-             stream_id = Stream_ID,
-             max_data = Max_Stream_Data,
-             owner = Owner,
-             type = Type,
-             data = max_stream_data
-            },
+  Frame = #{
+            type => max_stream_data,
+            stream_id => Stream_ID,
+            max_stream_data => Max_Stream_Data,
+            stream_owner => Owner,
+            stream_type => Type
+           },
 
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 validate_packet(Pkt_Info, 
                 [Message, App_Error, app_close | Rest], 
-                Acc) ->
+                Acc, Ack_Frames, TLS_Info) ->
 
-  Frame = #quic_frame{
-             type=app_close, 
-             data={App_Error, Message}
-            },
+  Frame = #{
+            type => app_close, 
+            error_code => App_Error, 
+            error_message => Message
+           },
 
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 validate_packet(Pkt_Info, 
                 [Message, Conn_Error, conn_close | Rest], 
-                Acc) ->
+                Acc, Ack_Frames, TLS_Info) ->
 
-  Frame = #quic_frame{
-             type=conn_close, 
-             data={Conn_Error, Message}
-            },
+  Frame = #{
+            type => conn_close, 
+            error_code => Conn_Error, 
+            error_message => Message
+           },
 
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 %% 3 - item frames
 validate_packet(Pkt_Info, 
                 [Offset, App_Error, Stream_ID, rst_stream | Rest], 
-                Acc) ->
+                Acc, Ack_Frames, TLS_Info) ->
 
-  Frame = #quic_frame{
-             type = rst_stream,
-             data = {Stream_ID, App_Error, Offset}
-            },
+  Frame = #{
+            type => rst_stream,
+            stream_id => Stream_ID, 
+            error_code => App_Error, 
+            offset => Offset
+           },
 
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 validate_packet(Pkt_Info, 
                 [Token, Conn_ID, Seq_Num, new_conn_id | Rest], 
-                Acc) ->
+                Acc, Ack_Frames, TLS_Info) ->
 
-  Frame = #quic_frame{
-             type = new_conn_id,
-             data = {Seq_Num, Conn_ID, Token}
-            },
+  Frame = #{
+            type => new_conn_id,
+            conn_id => Conn_ID,
+            token => Token,
+            sequence => Seq_Num
+           },
 
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 %% Stream items either 1 item, 2 items, 3 items, or 4 items.
 %% Either stream_data or stream_close type.
 validate_packet(Pkt_Info, 
                 [Message, Stream_ID, {stream_data, 0, _} | Rest], 
-                Acc) ->
+                Acc, Ack_Frames, TLS_Info) ->
 
   <<_:60, Type:1, Owner:1>> = <<Stream_ID:62>>,
 
-  Frame = #quic_stream{
-             stream_id = Stream_ID,
-             offset = 0,
-             open = 1,
-             current_data = 0,
-             owner = Owner,
-             type = Type,
-             data = Message
-            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+  Frame = #{
+            type => stream_open,
+            stream_id => Stream_ID,
+            offset => 0,
+            stream_owner => Owner,
+            stream_type => Type,
+            data => Message
+           },
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, 
-                [Message, Stream_ID, {stream_close, 0, _} | Rest], 
-                Acc) ->
+validate_packet(Pkt_Info,
+                [Message, Stream_ID, {stream_close, 0, _} | Rest],
+                Acc, Ack_Frames, TLS_Info) ->
 
   <<_:60, Type:1, Owner:1>> = <<Stream_ID:62>>,
 
-  Frame = #quic_stream{
-             stream_id = Stream_ID,
-             offset = 0,
-             current_data = 0,
-             open = 0,
-             owner = Owner,
-             type = Type,
-             data = Message
-            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);  
+  Frame = #{
+            type => stream_close,
+            stream_id => Stream_ID,
+            offset => 0,
+            stream_owner => Owner,
+            stream_type => Type,
+            data => Message
+           },
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);  
 
 %% Offset set
 validate_packet(Pkt_Info, 
                 [Message, Offset, Stream_ID, {stream_data, 1, _} | Rest], 
-                Acc) ->
+                Acc, Ack_Frames, TLS_Info) ->
 
   <<_:60, Type:1, Owner:1>> = <<Stream_ID:62>>,
 
-  Frame = #quic_stream{
-             stream_id = Stream_ID,
-             offset = Offset,
-             open = 1,
-             owner = Owner,
-             type = Type,
-             data = Message
-            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+  Frame = #{
+            type => stream_data,
+            stream_id => Stream_ID,
+            offset => Offset,
+            stream_owner => Owner,
+            stream_type => Type,
+            data => Message
+           },
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 validate_packet(Pkt_Info, 
                 [Message, Offset, Stream_ID, {stream_close, 1, _} | Rest], 
-                Acc) ->
+                Acc, Ack_Frames, TLS_Info) ->
 
   <<_:60, Type:1, Owner:1>> = <<Stream_ID:62>>,
 
-  Frame = #quic_stream{
-             stream_id = Stream_ID,
-             offset = Offset,
-             open = 0,
-             owner = Owner,
-             type = Type,
-             data = Message
-            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc]);
+  Frame = #{
+            type => stream_close,
+            stream_id => Stream_ID,
+            offset => Offset,
+            stream_owner => Owner,
+            stream_type => Type,
+            data => Message
+           },
+  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 %% Ack block. This is the only one that keeps the reversed ordered.
 %% Smallest to Largest makes more sense to process on the connection side.
 %% Begins with end_ack_block atom and ends with ack_frame atom.
 %% This does traverse the entire ack block frame twice, so it is a potential
 %% source of optimization.
-validate_packet(Pkt_Info, [end_ack_block | Rest], Frames) ->
-  read_acks(Pkt_Info, Rest, Frames, []).
+%% TODO: Update this to something better.
+validate_packet(Pkt_Info, [end_ack_block | Rest], Frames, Ack_Frames, TLS_Info) ->
+  read_acks(Pkt_Info, Rest, Frames, Ack_Frames, TLS_Info, []).
 
 %% Pops all ack ranges off the stack and into a new accumulator to allow
 %% in order processessing of the ack ranges.
-read_acks(Pkt_Info, [Ack, Block_Count, Delay, Largest_Ack, ack_frame | Stack], 
-          Frames, Acc) ->
+read_acks(Pkt_Info, [Ack_Block, Block_Count, Delay, Largest_Ack, ack_frame | Stack], 
+          Frames, Ack_Frames, TLS_Info, Acc) ->
 
-  construct_ack_frame(Pkt_Info#quic_packet{
-                        ack_delay=Delay,
-                        ack_count=Block_Count
-                       },
-                      Stack, Frames, [Ack | Acc], Largest_Ack);
+  Ack_Frame = #{
+                type => ack_frame,
+                largest_ack => Largest_Ack,
+                smallest_ack => Largest_Ack,
+                block_count => Block_Count,
+                ack_delay => Delay
+               },
+  construct_ack_frame(Pkt_Info, Stack, Frames, Ack_Frames, 
+                      TLS_Info, [Ack_Block | Acc], Ack_Frame);
 
-read_acks(Pkt_Info, [Ack, Gap | Rest], Frames, Acc) ->
-  read_acks(Pkt_Info, Rest, Frames, [Gap, Ack | Acc]).
+read_acks(Pkt_Info, [Ack_Block, Gap_Block | Rest], Frames, Ack_Frames, TLS_Info, Acc) ->
+  read_acks(Pkt_Info, Rest, Frames, Ack_Frames, TLS_Info, [Gap_Block, Ack_Block | Acc]).
 
 %% Calculates the largest and smallest ack packet number in the frame
-%% Pushes it onto the ack_frame list in #quic_packet{}.
+%% Pushes it onto the ack_frame list in #quic_data{}.
 
-
-construct_ack_frame(#quic_packet{ack_frames = Ack_List} = Pkt_Info,
-                    Stack, Frames, [Ack], Largest) ->
+construct_ack_frame(Pkt_Info, Stack, Frames, Ack_Frames, 
+                    TLS_Info, [Ack], 
+                    #{
+                      smallest_ack := Largest,
+                      acks := Ack_List
+                     } = Frame0) ->
 
   Smallest = Largest - Ack,
   
-  Ack_Frame = #quic_acks{
-                 type = ack,
-                 largest = Largest,
-                 smallest = Smallest
-                },
+  New_Ack_Range = lists:seq(Smallest, Largest),
+  
+  Ack_Frame = Frame0#{
+                      smallest_ack => Smallest,
+                      acks => [New_Ack_Range | Ack_List]
+                     },
 
-  validate_packet(Pkt_Info#quic_packet{ack_frames = [Ack_Frame | Ack_List]},
-                  Stack, Frames);
+  validate_packet(Pkt_Info, Stack, Frames, [Ack_Frame | Ack_Frames], TLS_Info);
 
-%% The next largest ack is the number of packets is given by:
+%% The next largest ack is given by:
 %% Next_Largest = Smallest - Gap - 2
 %% where, 
 %% Smallest = Largest - Ack
 %% See Section 7.15.1
-construct_ack_frame(#quic_packet{ack_frames = Ack_List} = Pkt_Info, 
-                    Stack, Frames, [Ack, Gap | Rest], Largest) ->
+construct_ack_frame(Pkt_Info, Stack, Frames, Ack_Frames, 
+                    TLS_Info, [Ack, Gap | Rest], 
+                    #{
+                      largest_ack := Largest,
+                      smallest_ack := Smallest,
+                      acks := Ack_List,
+                      gaps := Gap_List
+                     } = Frame0) ->
 
-  Smallest_Ack = Largest - Ack,
+  Smallest_Ack = Smallest - Ack,
 
-  Ack_Frame = #quic_acks{
-                 type = ack,
-                 largest = Largest,
-                 smallest = Smallest_Ack
-                },
+  New_Ack_Range = lists:seq(Smallest_Ack, Smallest),
 
   Next_Largest = Smallest_Ack - Gap - 2,
 
-  Gap_Frame = #quic_acks{
-                 type = gap,
-                 largest = Smallest_Ack - 1, % largest unacked packet.
-                 smallest = Next_Largest
-                },
+  New_Gap_Range = lists:seq(Next_Largest, Smallest_Ack),
 
-  construct_ack_frame(Pkt_Info#quic_packet{
-                        ack_frames = [Gap_Frame, Ack_Frame | Ack_List]},
-                      Stack, Frames, Rest, Next_Largest).
-
-parse_conn_ids(<<DCIL:4, SCIL:4,
-                 Dest_Conn:DCIL/unit:8,
-                 Src_Conn:SCIL/unit:8,
-                 Rest/bits>>,
-               #quic_packet{
-                  dest_conn_ID = Dest,
-                  src_conn_ID = Src
-                 } = Info,
-               Acc, Funs) ->
-
-  case {validate_conn(Dest, <<Dest_Conn>>), 
-        validate_conn(Src, <<Src_Conn>>)} of
-    {true, true} ->
-      %% Dest and Src have not been set yet.
-      Packet_Info = Info#quic_packet{
-                      dest_conn_ID = <<Src_Conn>>,
-                      src_conn_ID = <<Dest_Conn>>,
-                      dest_conn_ID_len = SCIL,
-                      src_conn_ID_len = DCIL
+  Ack_Frame = Frame0#{
+                      smallest => Next_Largest,
+                      acks => [New_Ack_Range | Ack_List],
+                      gaps => [New_Gap_Range | Gap_List]
                      },
-      parse_next(Rest, Packet_Info, Acc, Funs);
 
-    _Other ->
-      ?DBG("Connection IDs do not match.~n", []),
-      ?DBG("Dest: ~p~n~p~n", [Dest, <<Dest_Conn>>]),
-      ?DBG("Src: ~p~n~p~n", [Src, <<Src_Conn>>]),
-      {error, protocol_violation}
-  end.
+  construct_ack_frame(Pkt_Info, Stack, Frames, TLS_Info, Ack_Frames, Rest, Ack_Frame).
 
-%% Returns true if the connection IDs match or are undefined.
-validate_conn(Conn, Conn) -> true;
-validate_conn(undefined, _) -> true;
-validate_conn(_, undefined) -> true;
-validate_conn(_, _) -> false.
-
-
-parse_pkt_num(<<0:1, Pkt_Num:7, Rest/bits>>, Packet_Info, Acc, Funs) ->
-  parse_next(Rest, Packet_Info#quic_packet{pkt_num = Pkt_Num}, Acc, Funs);
-
-parse_pkt_num(<<2:2, Pkt_Num:14, Rest/bits>>, Packet_Info, Acc, Funs) ->
-  parse_next(Rest, Packet_Info#quic_packet{pkt_num = Pkt_Num}, Acc, Funs);
-
-parse_pkt_num(<<3:2, Pkt_Num:30, Rest/bits>>, Packet_Info, Acc, Funs) ->
-  parse_next(Rest, Packet_Info#quic_packet{pkt_num = Pkt_Num}, Acc, Funs).
-
-
-parse_short_id(<<Packet/bits>>, Packet_Info, Acc, Funs, Length) ->
-  <<Dest_Conn:Length/unit:8, Rest/bits>> = Packet,
-
-  case Packet_Info#quic_packet.src_conn_ID of
-    <<Dest_Conn>> ->
-      %% Success
-      parse_next(Rest, Packet_Info, Acc, Funs);
-
-    Other ->
-      %% Failure. These should be equal.
-      ?DBG("Destination connection ID does not match:~n~p~n~p~n", 
-           [Other, <<Dest_Conn>>]),
-      {error, protocol_violation}
-  end.
 
 %% Not called anymore. Leaving for debug purposes.
 %% parse_frames(<<Binary/bits>>, Packet_Info) ->
@@ -599,67 +502,51 @@ parse_short_id(<<Packet/bits>>, Packet_Info, Acc, Funs, Length) ->
 parse_frame(<<0:1, 0:1, 0:1, 0:1, Type:4, Rest/bits>>, Pkt_Info, Stack) ->
   case Type of
     ?PADDING ->
-      ?DBG("Padding.~n", []),
       parse_next(Rest, Pkt_Info, Stack, padding());
 
     ?RST_STREAM ->
-      ?DBG("Reset Stream.~n", []),
       parse_next(Rest, Pkt_Info, [rst_stream | Stack], rst_stream());
 
     ?CONN_CLOSE ->
-      ?DBG("Connection Close.~n", []),
       parse_next(Rest, Pkt_Info, [conn_close | Stack], conn_close());
 
     ?APP_CLOSE ->
-      ?DBG("Application Close.~n", []),
       parse_next(Rest, Pkt_Info, [app_close | Stack], app_close());
 
     ?MAX_DATA ->
-      ?DBG("Max Data.~n", []),
       parse_next(Rest, Pkt_Info, [max_data | Stack], max_data());
 
     ?MAX_STREAM_DATA ->
-      ?DBG("Max Stream Data.~n", []),
       parse_next(Rest, Pkt_Info, [max_stream_data | Stack], max_stream_data());
 
     ?MAX_STREAM_ID ->
-      ?DBG("Max Stream ID.~n", []),
       parse_next(Rest, Pkt_Info, [max_stream_id | Stack], max_stream_id());
 
     ?PING ->
-      ?DBG("Ping.~n", []),
       parse_next(Rest, Pkt_Info, [ping | Stack], ping());
 
     ?BLOCKED ->
-      ?DBG("Blocked.~n", []),
       parse_next(Rest, Pkt_Info, [data_blocked | Stack], data_blocked());
 
     ?STREAM_BLOCKED ->
-      ?DBG("Stream Blocked.~n", []),
       parse_next(Rest, Pkt_Info, [stream_data_blocked | Stack], stream_data_blocked());
 
     ?STREAM_ID_BLOCKED ->
-      ?DBG("Stream ID Blocked.~n", []),
       parse_next(Rest, Pkt_Info, [stream_id_blocked | Stack], stream_id_blocked());
 
     ?NEW_CONN_ID ->
-      ?DBG("New Connection ID.~n", []),
       parse_next(Rest, Pkt_Info, [new_conn_id | Stack], new_conn_id());
 
     ?STOP_SENDING ->
-      ?DBG("Stop Sending.~n", []),
       parse_next(Rest, Pkt_Info, [stop_sending | Stack], stop_sending());
 
     ?ACK_FRAME ->
-      ?DBG("Ack Frame.~n", []),
       parse_next(Rest, Pkt_Info, [ack_frame | Stack], ack_frame());
 
     ?PATH_CHALLENGE ->
-      ?DBG("Path Challenge.~n", []),
       parse_next(Rest, Pkt_Info, [path_challenge | Stack], path_challenge());
 
     ?PATH_RESPONSE ->
-      ?DBG("Path Response.~n", []),
       parse_next(Rest, Pkt_Info, [path_response | Stack], path_response())
   end;
 
@@ -673,10 +560,7 @@ parse_frame(<<1:4, 0:1, Off:1, Len:1, 1:1 , Rest/bits>>, Pkt_Info, Stack) ->
              [{stream_close, Off, Len} | Stack], 
              stream({Off, Len}));
 
-parse_frame(Other, Pkt_Info, Stack) ->
-  ?DBG("Not a proper frame type: ~p.~n", [Other]),
-  ?DBG("Packet_Info: ~p~n", [Pkt_Info]),
-  ?DBG("Frames: ~p~n", [Stack]),
+parse_frame(_Other, _Pkt_Info, _Stack) ->
   {error, badarg}.
 
 
@@ -687,10 +571,6 @@ parse_app_error(<<_App_Error:16, Rest/binary>>, Pkt_Info, Stack, Funs) ->
   parse_next(Rest, Pkt_Info, [app_error | Stack], Funs);
 
 parse_app_error(Other, Pkt_Info, Stack, Funs) ->
-  ?DBG("Error parsing application error: ~p~n", [Other]),
-  ?DBG("Packet_Info: ~p~n", [Pkt_Info]),
-  ?DBG("Frames: ~p~n", [Stack]),
-  ?DBG("Funs: ~p~n", [Funs]),
   {error, badarg}.
 
 
@@ -727,23 +607,14 @@ conn_error(Frame_Error) when
   {error, frame_error};
 %% TODO: frame_error(Frame_Error)
 conn_error(Other) ->
-  ?DBG("Unsupported error: ~p~n", [Other]),
   {error, badarg}.
 
 
-
-parse_conn_id(<<ID_Len:4, Conn_ID:ID_Len, Rest/bits>>, Pkt_Info, Stack, Funs) ->
-  ?DBG("Connection ID parsed: ~p~n", [Conn_ID]),
-  ?DBG("Length: ~p~n", [ID_Len]),
-  parse_next(Rest, Pkt_Info, [Conn_ID, ID_Len | Stack], Funs).
-
 parse_token(<<Token:128, Rest/bits>>, Pkt_Info, Stack, Funs) ->
-  ?DBG("Parsing 128 bit token: ~p~n", [Token]),
   parse_next(Rest, Pkt_Info, [Token | Stack], Funs).
 
 
 parse_ack_blocks(<<Binary/bits>>, Pkt_Info, [Count | _]=Stack, Funs) ->
-  ?DBG("Parsing ack block of size: ~p~n", [Count]),
   parse_ack_blocks(Binary, Pkt_Info, Stack, Funs, Count).
 
 
@@ -772,8 +643,6 @@ parse_offset(<<Integer:62, Rest/bits>>, Pkt_Info, Stack, Funs, 3) ->
   parse_next(Rest, Pkt_Info, [Integer | Stack], Funs);
 
 parse_offset(<<_Error/bits>>, Pkt_Info, Stack, _Funs, Offset) ->
-  ?DBG("Invalid Offset: ~p~n", [Offset]),
-  ?DBG("Packet_Info: ~p~nFrame: ~p~n", [Pkt_Info, Stack]),
   {error, badarg}.
 
 
@@ -798,29 +667,7 @@ parse_offset_message(<<Integer:62, Rest/bits>>, Pkt_Info, Stack, Funs, 3) ->
   parse_message(Rest, Pkt_Info, Stack, Funs, Integer);
 
 parse_offset_message(<<_Error/bits>>, Pkt_Info, Stack, _Funs, Offset) ->
-  ?DBG("Invalid Offset: ~p~n", [Offset]),
-  ?DBG("Packet_Info: ~p~nFrame: ~p~n", [Pkt_Info, Stack]),
   {error, badarg}.
 
 
-%% Parses Long header type
-from_type(<<1:1, Type:7>>) ->
-  case Type of
-    ?INITIAL ->
-      {ok, initial};
-    ?RETRY ->
-      {ok, retry};
-    ?HANDSHAKE ->
-      {ok, handshake};
-    ?PROTECTED ->
-      {ok, protected};
-    Other ->
-      ?DBG("Unsupported long header type received: ~p~n", [Other]),
-      ?DBG("Type: ~p~n", [Type]),
-      {error, badarg}
-  end;
-
-from_type(Other) ->
-  ?DBG("Incorrect header format received: ~p~n", [Other]),
-  {error, badarg}.
 

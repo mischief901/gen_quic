@@ -2,11 +2,7 @@
 %%% @author alex <alex@alex-Lenovo>
 %%% @copyright (C) 2018, alex
 %%% @doc
-%%% quic_stream is a callback module to support stream based communication
-%%% on a quic connections.
-%%% This is a callback module. See quic_conn for the API.
 %%% @end
-%%% Created : 29 Jun 2018 by alex <alex@alex-Lenovo>
 %%%-------------------------------------------------------------------
 -module(quic_stream).
 
@@ -14,79 +10,197 @@
 
 -include("quic_headers.hrl").
 
+-export([open_stream/2]).
+-export([add_stream/4]).
+-export([add_peer_stream/3]).
+-export([send/2]).
+-export([recv/2]).
+-export([close/1]).
+-export([shutdown/1]).
+-export([controlling_process/2]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3, format_status/2]).
+
+-spec open_stream(Socket, Default_Options) -> Result when
+    Socket :: gen_quic:socket(),
+    Default_Options :: map(),
+    Result :: {ok, Pid},
+    Pid :: pid().
+
+open_stream(Socket, Default_Options) ->
+  gen_server:start_link(?MODULE, [Socket, Default_Options], []).
+
+
+-spec add_stream(Pid, Owner, Stream_ID, Options) -> Result when
+    Pid :: pid(),
+    Owner :: pid(),
+    Stream_ID :: non_neg_integer(),
+    Options :: map(),
+    Result :: ok.
+
+add_stream(Pid, Owner, Stream_ID, Options) ->
+  gen_server:cast(Pid, {add_stream, Owner, Stream_ID, Options}).
+
+
+-spec add_peer_stream(Pid, Stream_ID, Initial_Frame) -> ok when
+    Pid :: pid(),
+    Stream_ID :: non_neg_integer(),
+    Initial_Frame :: map().
+
+add_peer_stream(Pid, Stream_ID, Init_Frame) ->
+  gen_server:cast(Pid, {add_peer_stream, Stream_ID, Init_Frame}).
+
+
+-spec send(Stream, Data) -> Result when
+    Stream :: gen_quic:stream(),
+    Data :: binary() | list(),
+    Result :: ok.
+
+send({Socket, Stream_ID} = Stream, Data) when is_list(Data) ->
+  send(Stream, list_to_binary(Data));
+
+send({Socket, Stream_ID} = Stream, Data) ->
+  gen_server:cast(via(Stream), {send, Stream_ID, Data}).
+
+
+-spec recv(Stream, Timeout) -> Result when
+    Stream :: gen_quic:stream(),
+    Timeout :: non_neg_integer() | infinity,
+    Result :: {ok, Data} | {error, timeout},
+    Data :: binary() | list().
+
+recv({_Socket, Stream_ID} = Stream, Timeout) ->
+  recv(Stream, Timeout, 0).
+
+recv(Stream, Timeout, Current) when Current >= Timeout ->
+  {error, timeout};
+recv({Socket, Stream_ID} = Stream, Timeout, Current) ->
+  case gen_server:call(via(Stream), {recv, Stream_ID}, 100) of
+    {error, timeout} ->
+      recv(Stream, Timeout, Current + 100);
+    Other ->
+      Other
+  end.
+
+-spec controlling_process(Stream, Pid) -> ok | {error, not_owner} when
+    Stream :: gen_quic:stream(),
+    Pid :: pid().
+
+controlling_process({_Socket, Stream_ID} = Stream, Pid) ->
+  gen_server:call(via(Stream), {new_owner, Stream_ID, Pid}).
+
+
+-spec close(Stream) -> ok | {error, not_owner} | {error, not_found} when
+    Stream :: gen_quic:stream().
+
+close({_Socket, Stream_ID} = Stream) ->
+  case gen_server:call(via(Stream), {close, Stream_ID}) of
+    ok ->
+      stream_balancer:close_stream(Stream);
+
+    {error, _Reason} = Error ->
+      Error
+  end.
+
+
+-spec shutdown(Pid :: pid()) -> ok | {error, stream_open}.
+
+shutdown(Pid) ->
+  gen_server:call(Pid, shutdown).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
-init([Owner, Socket, Stream_ID, Limits, Stream_Opts]) ->
+init([Socket, Default_Options]) ->
   process_flag(trap_exit, true),
   
-  %% Not too many options here yet, but does initialize the state
-  %% based on the ones we do have.
-  Stream0 = set_opts(#quic_stream{}, Limits), 
-  Stream1 = set_opts(Stream0, Stream_Opts),
-  
-  {ok, Stream1#quic_stream{
-         owner = Owner,
-         socket = Socket,
-         stream_id = Stream_ID
-        }}.
+  {ok, #{socket => Socket,
+         stream_ids => #{},
+         default_options => Default_Options}}.
+
 
 handle_call(recv, _From, Stream) ->
   {reply, ok, Stream};
 
 %% Changing controlling process.
-handle_call({new_owner, Pid}, From,
-            #quic_stream{owner = From} = Stream) ->
-  {reply, ok, Stream#quic_stream{owner = Pid}};
+handle_call({controlling_process, Stream_ID, Pid}, From,
+            #{stream_ids := Stream0} = State) ->
+  case maps:get(Stream_ID, Stream0, not_found) of
+    not_found ->
+      {reply, {error, not_found}, State};
 
-handle_call({new_owner, _Pid}, _From, Stream) ->
-  {reply, {error, not_owner}, Stream};
+    #{owner := From} = Stream_Data0 ->
+      Stream_Data = Stream_Data0#{owner => Pid},
+      {reply, ok, State#{stream_ids := Stream0#{Stream_ID := Stream_Data}}};
+
+    _ ->
+      {reply, {error, not_owner}, State}
+  end;
 
 handle_call(_Request, _From, State) ->
   Reply = ok,
   {reply, Reply, State}.
 
-%% TODO: Add max_stream_data frame check.
-%% Encoding and sending data.
-handle_cast({send, Raw_Data},
-            #quic_stream{
-               socket = Socket,
-               socket_pid = Pid,
-               offset = Offset,
-               pack_type = Pack_Type,
-               max_data = Max
-              } = Stream) when byte_size(Raw_Data) + Offset =< Max->
-  %% We have room to send the frames on the stream.
-  %% TODO: Update encode_frame to take in and return quic_stream.
-  {ok, Frame, Stream} = quic_packet:encode_frame(Raw_Data, Stream0),
 
-  gen_statem:cast(Pid, {send, {Pack_Type, Frame}}),
+handle_cast({add_stream, Owner, Stream_ID, Options},
+            #{socket := Socket,
+              stream_ids := Stream0} = State) ->
+  Stream_Type = maps:get(type, Options),
+  Stream1 = maps:put(Stream_ID, #{owner => Owner,
+                                  type => {local, Stream_Type},
+                                  options => Options,
+                                  buffer => [],
+                                  recv_offset => 0,
+                                  send_offset => 0},
+                     Stream0),
+  Pack_Type = maps:get(pack, Options, none),
+  Frame = quic_packet:form_frame(stream_open, Stream_ID),
+  quic_conn:send(Socket, {Pack_Type, Frame}),
+  {noreply, State#{stream_ids := Stream1}};
 
-  {noreply, Stream};
+handle_cast({add_peer_stream, Stream_ID, Init_Frame},
+            #{stream_ids := Stream0,
+              default_options := Default_Options} = State) ->
+  
+  Stream_Type = maps:get(type, Init_Frame),
+  Stream1 = maps:put(Stream_ID, #{type => {peer, Stream_Type},
+                                  options => Default_Options,
+                                  buffer => [],
+                                  recv_offset => 0,
+                                  send_offset => 0},
+                     Stream0),
+  gen_server:cast(self(), {stream_data, Init_Frame}),
+  {noreply, State#{stream_ids := Stream1}};
 
-handle_cast({send, Raw_Data},
-            #quic_stream{
-               socket = Socket,
-               offset = Offset
-              } = Stream) ->
-  %% The maximum data of the stream has been reached. Send a message indicating
-  %% we want more room and add Raw_Data to buffer.
-  %% TODO:
-  ok;
+handle_cast({send, Stream_ID, Raw_Data},
+            #{socket := Socket,
+              stream_ids := Stream0
+             } = State) ->
+  case maps:get(Stream_ID, Stream0, undefined) of
+    undefined ->
+      {noreply, State};
+    
+    #{send_offset := Offset,
+      options := Options
+     } = Stream_Data0 ->
+      Length = byte_size(Raw_Data),
+
+      {ok, Frame} = quic_packet:form_frame(stream_data, 
+                                           {Stream_ID, Length, Offset, Raw_Data}),
+      Pack_Type = maps:get(pack, Options, none),
+      quic_conn:send(Socket, {Pack_Type, Frame}),
+      Stream_Data = Stream_Data0#{send_offset := Offset + Length},
+      Streams = Stream0#{stream_ids := Stream_Data},
+      {noreply, State#{stream_ids := Streams}}
+  end;
 
 handle_cast(_Request, State) ->
   {noreply, State}.
 
 
-%% TODO: This will need to handle messages like {stream_data, Frame} from the
-%% state machine processes.
-%% Will need to respond accordingly if stream limits are violated.
-%% Also handle updates to stream limits.
 handle_info(_Info, State) ->
   {noreply, State}.
 
@@ -107,15 +221,11 @@ format_status(_Opt, Status) ->
 %%%===================================================================
 
 -spec via(Socket) -> Result when
-    Socket :: gen_quic:socket(),
+    Socket :: gen_quic:socket() | gen_quic:stream() | {gen_quic:socket(), balancer},
     Result :: {via, quic_registry, Socket}.
 
 via(Socket) ->
   {via, quic_registry, Socket}.
 
-
-set_opts(Stream, Opts) ->
-  %% TODO:
-  #quic_stream{}.
 
 

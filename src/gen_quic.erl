@@ -17,75 +17,66 @@
 -export([listen/2]).
 -export([accept/1, accept/2]).
 -export([open/2]).
--export([close/1, shutdown/1]).
+-export([close/1]).
 -export([send/2]).
 -export([recv/2, recv/3]).
 -export([controlling_process/2]).
 
+-export([setopts/2, getopts/2]).
+%% -export([set_stream_opts/2, get_stream_opts/2]).
+
 %-include("inet_int.hrl").
 
--type socket() :: inet:socket() |
-                  {inet:socket(), StreamID :: non_neg_integer()}.
+-type socket() :: port().
 
+-type stream() :: {socket(), StreamID :: non_neg_integer()}.
+
+-type stream_option() ::
+        #{pack => none | low | balanced,
+          type => uni | bidi,
+          stream_data_limit => non_neg_integer(),
+          active => true | false | once | -32768..32767,
+          mode => list | binary,
+          stream_timeout => non_neg_integer() | infinity
+         }.
+
+-type balancer_option() ::
+        #{init_stream_id_bidi => non_neg_integer(),
+          init_stream_id_uni  => non_neg_integer(),
+          stream_id_incr_bidi => non_neg_integer(),
+          stream_id_incr_uni  => non_neg_integer(),
+          max_stream_id_bidi  => non_neg_integer(),
+          max_stream_id_uni   => non_neg_integer(),
+          default_stream_opts => stream_option()
+         }.
 
 -type option() ::
-        {active, true | false | once | -32768..32767} |
-        {add_membership, {inet:ip_address(), inet:ip_address()}} |
-        {broadcast, boolean()} |
-        {buffer, non_neg_integer()} |
-        {deliver, port | term} |
-        {dontroute, boolean()} |
-        {drop_membership, {inet:ip_address(), inet:ip_address()}} |
-        {header, non_neg_integer()} |
-        {high_msgq_watermark, pos_integer()} |
-        {low_msgq_watermark, pos_integer()} |
-        {mode, list | binary} | list | binary |
-        {multicast_if, inet:ip_address()} |
-        {multicast_loop, boolean()} |
-        {multicast_ttl, non_neg_integer()} |
-        {priority, non_neg_integer()} |
-        {raw,
-         Protocol :: non_neg_integer(),
-         OptionNum :: non_neg_integer(),
-         ValueBin :: binary()} |
-        {read_packets, non_neg_integer()} |
-        {recbuf, non_neg_integer()} |
-        {reuseaddr, boolean()} |
-        {sndbuf, non_neg_integer()} |
-        {tos, non_neg_integer()} |
-        {ipv6_v6only, boolean()}.
+        gen_udp:option() |
+        {packing_priority, none | low | balanced} |
+        {balancer_opts, balancer_option()}.
 
 -type option_name() ::
+        pack |
+        type |
+        stream_data_limit |
         active |
-        broadcast |
-        buffer |
-        deliver |
-        dontroute |
-        header |
-        high_msgq_watermark |
-        low_msgq_watermark |
-        mode |
-        multicast_if |
-        multicast_loop |
-        multicast_ttl |
-        priority |
-        {raw,
-         Protocol :: non_neg_integer(),
-         OptionNum :: non_neg_integer(),
-         ValueSpec :: (ValueSize :: non_neg_integer()) |
-                      (ValueBin :: binary())} |
-        read_packets |
-        recbuf |
-        reuseaddr |
-        sndbuf |
-        tos |
-        ipv6_only.
+        mode | list | binary |
+        init_stream_id_bidi |
+        init_stream_id_uni |
+        stream_id_incr_bidi |
+        stream_id_incr_uni |
+        max_stream_id_bidi |
+        max_stream_id_uni |
+        default_stream_opts |
+        packing_priority |
+        balancer_opts.
 
-%% This will be expanded later on.
--type stream_options() ::
-        option().
+%% This will be expanded later.
+-type error() ::
+        any().
 
--export_type([option/0, option_name/0, stream_options/0, socket/0]).
+-export_type([stream_option/0, balancer_option/0, option/0, option_name/0, error/0]).
+-export_type([socket/0, stream/0]).
 
 %%%===================================================================
 %%% API
@@ -100,14 +91,9 @@
     Address :: inet:socket_address() | inet:hostname(),
     Port :: inet:port_number(),
     Opts :: [Option],
-    Option :: {ip, inet:socket_address()} |
-              {fd, non_neg_integer()} |
-              {ifaddr, inet:socket_address()} |
-              inet:address_family() |
-              {port, inet:port_number()} |
-              option(),
+    Option :: option(),
     Socket :: socket(),
-    Reason :: inet:posix().
+    Reason :: error().
 
 connect(Address, Port, Opts) ->
   connect(Address, Port, Opts, infinity).
@@ -130,7 +116,7 @@ connect(Address, Port, Opts) ->
 connect(Address, Port, Opts, Time) ->
   Timer = inet:start_timer(Time),
   Res = (catch connect1(Address, Port, Opts, Timer)),
-  _ = inet:stop_time(Timer),
+  _ = inet:stop_timer(Timer),
   case Res of
     {ok, Socket} ->
       {ok, Socket};
@@ -237,7 +223,7 @@ accept(PeerSocket, Timeout) ->
 -spec open(Socket, Opts) -> Result when
     Socket :: port(),
     Opts :: [Opt],
-    Opt :: gen_quic:stream_options(),
+    Opt :: gen_quic:stream_option(),
     Result :: {ok, {Socket, StreamID}} | {error, Reason},
     StreamID :: non_neg_integer(),
     Reason :: inet:posix().
@@ -250,34 +236,27 @@ open(Socket, Opts) ->
       Error
   end.
 
-%%
-%% Close
-%%
 
--spec close(Socket) -> ok when
-    Socket :: socket().
-
-close(Socket) ->
-  inet_quic_util:close(Socket).
-
-
-%% 
-%% Shutdown: Used to close streams.
-%%
-
--spec shutdown({Socket, Stream_ID}) -> ok | {error, Reason} when
-    Socket :: socket(),
+-spec close(Socket) -> ok | {error, Reason} when
+    Socket :: socket() | {socket(), Stream_ID},
     Stream_ID :: non_neg_integer(),
-    Reason :: inet:posix().
+    Reason :: not_owner.
 
-shutdown({Socket, Stream_ID}) ->
+close({Socket, Stream_ID}) ->
   case inet_db:lookup_socket(Socket) of
     {ok, Mod} ->
-      Mod:shutdown({Socket, Stream_ID});
+      Mod:close({Socket, Stream_ID});
+    Error ->
+      Error
+  end;
+
+close(Socket) ->
+  case inet_db:lookup_socket(Socket) of
+    {ok, Mod} ->
+      Mod:close(Socket);
     Error ->
       Error
   end.
-
 
 %%
 %% Send
@@ -363,6 +342,33 @@ recv(Socket, Length, Timeout) when is_integer(Length) ->
 
 controlling_process(Socket, Pid) ->
   quic_conn:controlling_process(Socket, Pid).
+
+
+-spec setopts(Socket, Options) -> Result when 
+    Socket :: gen_quic:socket(),
+    Options :: [Option],
+    Option :: gen_quic:option() | gen_udp:option(),
+    Result :: ok |
+              {error, [Errors]},
+    Errors :: {invalid_option, gen_quic:option()} |
+              {unknown_option, term()}.
+
+setopts(Socket, Options) ->
+  quic_conn:setopts(Socket, Options).
+
+
+-spec getopts(Socket, Options) -> Result when
+    Socket :: gen_quic:socket(),
+    Result :: {error, socket_not_found} |
+              {ok, Options},
+    Options :: [Option],
+    Option :: gen_quic:option() | gen_udp:option().
+
+getopts(Socket, Options) ->
+  quic_conn:getopts(Socket, Options).
+
+
+
 
 
 %%%===================================================================

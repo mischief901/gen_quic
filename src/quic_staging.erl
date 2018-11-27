@@ -48,10 +48,10 @@
 
 -module(quic_staging).
 
--export([new/1]).
--export([enstage/3]).
--export([destage/1]).
-%%-export([switch_mode/2]). %% Maybe not this.
+-export([init/2]).
+-export([enstage/2]).
+-export([restage/2]).
+-export([destage/2]).
 
 -export_type([staging/0]).
 
@@ -66,6 +66,8 @@
 -define(H2, 600).
 -define(H3, 400).
 -define(BAL, ?H2).
+
+-include("quic_headers.hrl").
 
 -record(stage, {
                 type :: none | low | balanced | high,
@@ -85,454 +87,552 @@
 
 -opaque staging() :: #stage{}.
 
--spec new(Packing_Priority) -> PQueues when
-    Packing_Priority :: none | low | balanced | high,
-    PQueues :: staging().
-
+-spec init(Data, Packing_Priority) -> {ok, Data} when
+    Data :: #quic_data{},
+    Packing_Priority :: none | low | balanced | high.
 
 %% It might be wise to split it out by type and delete the unneeded
 %% pack queues.
-new(Type) ->
-  #stage{type = Type}.
+init(Data, Packing_Priority) ->
+  {ok, Data#quic_data{send_queue = #stage{type = Packing_Priority}}}.
 
 
 %% Currently crashes when invalid queueing operation is called.
--spec enstage(Priority_Num, Frame, Staged) -> Result when
-    Priority_Num :: non_neg_integer(),
-    Frame :: {Type, binary()},
-    Type :: resend | packed | unpacked,
-    Staged :: staging(),
-    Result :: Staged. %%| {error, Reason}
+-spec enstage(Data, Frame) -> Result when
+    Data :: #quic_data{},
+    Frame :: quic_frame(),
+    Result :: {ok, Data}.
 
-enstage(P_Num, {unpacked, Frame}, 
-        #stage{unpacked = QUP0,
-               unpacked_len = Len
-              }=Stage) ->
-
+enstage(#quic_data{priority_num = P_Num,
+                   send_queue = #stage{
+                                   type = none,
+                                   unpacked = QUP0,
+                                   unpacked_len = Len
+                                  } = Stage0
+                  } = Data,
+        Frame) ->
   QUP = enqueue({P_Num, Frame}, QUP0),
-  Stage#stage{unpacked = QUP, unpacked_len = Len+1};
+  {ok, Data#quic_data{priority_num = P_Num + 1,
+                      send_queue = Stage0#stage{
+                                     unpacked = QUP,
+                                     unpacked_len = Len + 1}}};
 
-enstage(P_Num, {resend, Frame}, 
-        #stage{resend = QR0,
-               resend_len = Len
-              }=Stage) ->
-  QR = enqueue({P_Num, Frame}, QR0),
-  Stage#stage{resend = QR, resend_len = Len+1};
-
-enstage(P_Num, {packed, Frame}, Stage) ->
-  pack({P_Num, Frame}, Stage).
+enstage(Data, Frame) ->
+  pack(Data, Frame).
 
 
--spec pack({P_Num, Frame}, Stage) -> Result when
-    P_Num :: non_neg_integer(),
-    Frame :: binary(),
-    Stage :: staging(),
-    Result :: staging().
+-spec restage(Data, Frames) -> Result when
+    Data :: #quic_data{},
+    Frames :: [quic_frame()] | quic_frame(),
+    Result :: {ok, Data}.
 
-pack(Item, #stage{type = low, 
-                  pack1 = P1_0,
-                  pack1_len = Len
-                 }=Stage) ->
+restage(#quic_data{send_queue = 
+                     #stage{resend = QR0,
+                            resend_len = Len
+                           } = Stage
+                  } = Data,
+        Frames) when is_list(Frames) ->
 
-  P1 = enqueue(Item, P1_0),
-  Stage#stage{pack1 = P1, pack1_len = Len+1};
+  {QR, Num} = lists:foldl(fun(Frame, {Queue, Num}) -> 
+                              {enqueue(Frame, Queue), Num + 1} end,
+                          {QR0, 1}, Frames),
+  
+  {ok, Data#quic_data{
+         send_queue = 
+           Stage#stage{
+             resend = QR,
+             resend_len = Len + Num
+            }}};
 
-pack({_Num, Frame} = Item, 
-     #stage{type = balanced, 
-            pack1 = P1_0,
-            pack1_len = Len
-           }=Stage) when byte_size(Frame) < ?BAL ->
+restage(#quic_data{send_queue = 
+                     #stage{resend = QR0,
+                            resend_len = Len
+                           } = Stage
+                  } = Data,
+        Frame) ->
+  QR = enqueue(Frame, QR0),
+  {ok, Data#quic_data{
+         send_queue = Stage#stage{resend = QR,
+                                  resend_len = Len + 1}}}.
+
+
+-spec pack(Data, Frame) -> Result when
+    Data :: #quic_data{},
+    Frame :: quic_frame(),
+    Result :: {ok, Data}.
+
+pack(#quic_data{priority_num = P_Num,
+                send_queue = #stage{type = low,
+                                    pack1 = P1_0,
+                                    pack1_len = Len
+                                   } = Stage0
+               } = Data0,
+     Frame) ->
+  P1 = enqueue({P_Num, Frame}, P1_0),
+  Data = Data0#quic_data{
+           priority_num = P_Num + 1,
+           send_queue = Stage0#stage{pack1 = P1, 
+                                     pack1_len = Len + 1}},
+  {ok, Data};
+
+pack(#quic_data{priority_num = P_Num,
+                send_queue = #stage{type = balanced, 
+                                    pack1 = P1_0,
+                                    pack1_len = Len
+                                   } = Stage0} = Data0,
+     #{binary := Bin} = Frame) when byte_size(Bin) < ?BAL ->
+  
+  %% Smaller items are placed in pack1
+  %% Larger in pack2
+  P1 = enqueue({P_Num, Frame}, P1_0),
+  Data = Data0#quic_data{
+           priority_num = P_Num + 1,
+           send_queue = Stage0#stage{pack1 = P1, pack1_len = Len + 1}},
+  {ok, Data};
+
+pack(#quic_data{priority_num = P_Num,
+                send_queue = #stage{type = balanced, 
+                                    pack2 = P2_0,
+                                    pack2_len = Len
+                                   } = Stage0
+               } = Data0,
+     Frame) ->
 
   %% Smaller items are placed in pack1
   %% Larger in pack2
-  P1 = enqueue(Item, P1_0),
-  Stage#stage{pack1 = P1, pack1_len = Len+1};
+  P2 = enqueue({P_Num, Frame}, P2_0),
+  Data = Data0#quic_data{
+           priority_num = P_Num + 1,
+           send_queue = Stage0#stage{pack2 = P2, pack2_len = Len+1}},
+  {ok, Data};
 
-pack(Item, #stage{type = balanced, 
-                  pack2 = P2_0,
-                  pack2_len = Len
-                 }=Stage) ->
-
-  %% Smaller items are placed in pack1
-  %% Larger in pack2
-  P2 = enqueue(Item, P2_0),
-  Stage#stage{pack2 = P2, pack2_len = Len+1};
-
-pack({_Num, Frame} = Item, 
-     #stage{type = high, 
-            pack1 = P1_0,
-            pack1_len = Len
-           }=Stage) when byte_size(Frame) < ?H1 ->
+pack(#quic_data{priority_num = P_Num,
+                send_queue = #stage{type = high,
+                                    pack1 = P1_0,
+                                    pack1_len = Len} = Stage0
+               } = Data0,
+     #{binary := Bin} = Frame) when byte_size(Bin) < ?H1 ->
   %% Smaller items are placed in pack1
   %% Medium-Small in pack2
   %% Medium-Large in pack3
   %% Large in pack4
 
-  P1 = enqueue(Item, P1_0),
-  Stage#stage{pack1 = P1, pack1_len = Len+1};
+  P1 = enqueue({P_Num, Frame}, P1_0),
+  Data = Data0#quic_data{priority_num = P_Num + 1,
+                         send_queue = Stage0#stage{pack1 = P1, pack1_len = Len+1}},
+  {ok, Data};
 
-pack({_Num, Frame} = Item, 
-     #stage{type = high, 
-            pack2 = P2_0,
-            pack2_len = Len
-           }=Stage) when byte_size(Frame) < ?H2 ->
+pack(#quic_data{priority_num = P_Num,
+                send_queue = 
+                  #stage{type = high, 
+                         pack2 = P2_0,
+                         pack2_len = Len
+                        } = Stage0
+               } = Data0,
+     #{binary := Bin} = Frame) when byte_size(Bin) < ?H2 ->
   %% Smaller items are placed in pack1
   %% Medium-Small in pack2
   %% Medium-Large in pack3
   %% Large in pack4
 
-  P2 = enqueue(Item, P2_0),
-  Stage#stage{pack2 = P2, pack2_len = Len + 1};
+  P2 = enqueue({P_Num, Frame}, P2_0),
+  Data = Data0#quic_data{priority_num = P_Num + 1,
+                         send_queue = Stage0#stage{pack2 = P2, 
+                                                   pack2_len = Len + 1}},
+  {ok, Data};
 
-pack({_Num, Frame} = Item, 
-     #stage{type = high, 
-            pack3 = P3_0,
-            pack3_len = Len
-           }=Stage) when byte_size(Frame) < ?H3 ->
+pack(#quic_data{priority_num = P_Num,
+                send_queue = #stage{type = high, 
+                                    pack3 = P3_0,
+                                    pack3_len = Len
+                                   } = Stage0
+               } = Data0,
+     #{binary := Bin} = Frame) when byte_size(Bin) < ?H3 ->
   %% Smaller items are placed in pack1
   %% Medium-Small in pack2
   %% Medium-Large in pack3
   %% Large in pack4
 
-  P3 = enqueue(Item, P3_0),
-  Stage#stage{pack3 = P3, pack3_len = Len + 1};
+  P3 = enqueue({P_Num, Frame}, P3_0),
+  Data = Data0#quic_data{priority_num = P_Num + 1,
+                         send_queue = Stage0#stage{pack3 = P3, 
+                                                   pack3_len = Len + 1}},
+  {ok, Data};
 
-pack(Item, #stage{type = high, 
-                  pack4 = P4_0,
-                  pack4_len = Len
-                 }=Stage) ->
+pack(#quic_data{priority_num = P_Num,
+                send_queue = #stage{type = high, 
+                                    pack4 = P4_0,
+                                    pack4_len = Len
+                                   } = Stage0
+               } = Data0,
+     Frame) ->
   %% Smaller items are placed in pack1
   %% Medium-Small in pack2
   %% Medium-Large in pack3
   %% Large in pack4
 
-  P4 = enqueue(Item, P4_0),
-  Stage#stage{pack4 = P4, pack4_len = Len + 1}.
+  P4 = enqueue({P_Num, Frame}, P4_0),
+  Data = Data0#quic_data{priority_num = P_Num + 1,
+                         send_queue = Stage0#stage{pack4 = P4, 
+                                                   pack4_len = Len + 1}},
+  {ok, Data}.
 
-
--spec destage(Stage) -> Result when
-    Stage :: staging(),
-    Frames :: [Frame],
-    Frame :: binary(),
+-spec destage(Data, Size) -> Result when
+    Data :: #quic_data{},
     Size :: non_neg_integer(),
-    Result :: {Stage, Frames, Size} | empty.
+    Result :: {ok, Data, Frames} | empty,
+    Frames :: [Frame],
+    Frame :: quic_frame().
 
-destage(Stage) ->
-  destage(Stage, [], 0).
+destage(Data, Max_Size) ->
+  destage(Data, [], 0, Max_Size).
 
 
 %% Removes frames from the queues by priority or size (described
-%% at top) and returns the new stage, frames, and total byte size.
--spec destage(Stage, Frames, Size) -> Result when
-    Stage :: staging(),
+%% at top) and returns the new data and frames.
+-spec destage(Data, Frames, Size, Max_Size) -> Result when
+    Data :: #quic_data{},
     Frames :: [Frame],
-    Frame :: binary(),
+    Frame :: quic_frame(),
     Size :: non_neg_integer(),
-    Result :: {Stage, Frames, Size} | {Stage, empty}.
+    Max_Size :: non_neg_integer(),
+    Result :: {ok, Data, Frames} | empty.
 
-destage(#stage{resend_len = 0,
-               unpacked_len = 0,
-               pack1_len = 0,
-               pack2_len = 0,
-               pack3_len = 0,
-               pack4_len = 0
-              }, [], 0) ->
+destage(#quic_data{send_queue = #stage{resend_len = 0,
+                                       unpacked_len = 0,
+                                       pack1_len = 0,
+                                       pack2_len = 0,
+                                       pack3_len = 0,
+                                       pack4_len = 0
+                                      }}, [], _, _) ->
   %% Handle empty clause right away.
   empty;
 
-destage(#stage{type = none,
-               resend = RQ0,
-               resend_len = Len
-              } = Stage, 
-        Frames, Size) ->
+destage(#quic_data{
+           send_queue =
+             #stage{type = none,
+                    resend = RQ0,
+                    resend_len = Len
+                   } = Stage
+          } = Data, 
+        Frames, Size, Max) ->
   %% Frames and Size will be empty / 0 since no packing is
-  %% performed and as such no recursion is performed.
+  %% performed and as such only one packet is sent at a time.
   
   case dequeue(RQ0) of
-    {empty, _} ->
-      %% Nothing here so move to unpacked queue.
-      destage0(Stage, Frames, Size);
-    
-    {{value, {_, Frame}}, RQ} ->
-      %% Found something so return it.
-      %% Frame is guaranteed to fit since it is the only one.
-      {Stage#stage{resend = RQ, resend_len = Len - 1},
-       [Frame], byte_size(Frame)}
+    {{value, {_, #{binary := Bin} = Frame}}, RQ} when byte_size(Bin) =< Max ->
+      {ok, 
+       Data#quic_data{send_queue = Stage#stage{resend = RQ, resend_len = Len - 1}},
+       [Frame]};
+
+    _ ->
+      %% Frame is too large to send for this congestion window or queue is empty 
+      %% so move on to next queue.
+      destage0(Data, Frames, Size, Max)
   end;
 
-destage(#stage{resend = RQ0,
-               resend_len = Len
-              } = Stage, 
-        Frames, Size) ->
+destage(#quic_data{
+           send_queue = #stage{resend = RQ0,
+                               resend_len = Len
+                              } = Stage} = Data,
+        Frames, Size, Max) ->
 
   case dequeue(RQ0) of
-    {{value, {_, Frame}}, _RQ} when
-        byte_size(Frame) + Size > ?MAX ->
+    {{value, {_, #{binary := Bin} = Frame}}, _RQ} when
+        byte_size(Bin) + Size > Max ->
       %% If the frame is too big, ignore the dequeued item/queue
       %% and try queueing packable frames.
-      destage0(Stage, Frames, Size);
+      destage0(Data, Frames, Size, Max);
 
-    {{value, {_, Frame}}, RQ} ->
+    {{value, {_, #{binary := Bin} = Frame}}, RQ} ->
       %% There is room for the frame.
       %% recurse to see if more frames can be used.
-      destage(Stage#stage{resend = RQ, resend_len = Len-1},
-              [Frame | Frames], Size + byte_size(Frame));
+      destage(Data#quic_data{send_queue = Stage#stage{resend = RQ, resend_len = Len-1}},
+              [Frame | Frames], Size + byte_size(Bin), Max);
 
     {empty, _} ->
       %% Nothing to dequeue from the resend queue, so
       %% check other queues.
-      destage0(Stage, Frames, Size)
+      destage0(Data, Frames, Size, Max)
   end.
 
+destage0(#quic_data{send_queue = #stage{type = low}} = Data, 
+         Frames, Size, Max) ->
+  destage_low(Data, Frames, Size, Max);
 
-destage0(#stage{type = low} = Stage, Frames, Size) ->
-  destage_low(Stage, Frames, Size);
+destage0(#quic_data{send_queue = #stage{type = balanced}} = Data, 
+         Frames, Size, Max) ->
+  destage_balanced(Data, Frames, Size, Max);
 
-destage0(#stage{type = balanced} = Stage, Frames, Size) ->
-  destage_balanced(Stage, Frames, Size);
+destage0(#quic_data{send_queue = #stage{type = high}} = Data,
+         Frames, Size, Max) ->
+  destage_high(Data, Frames, Size, Max);
 
-destage0(#stage{type = high} = Stage, Frames, Size) ->
-  destage_high(Stage, Frames, Size);
-
-destage0(#stage{type = none} = Stage, Frames, Size) ->
-  destage_none(Stage, Frames, Size).
+destage0(#quic_data{send_queue = #stage{type = none}} = Data, 
+         Frames, Size, Max) ->
+  destage_none(Data, Frames, Size, Max).
 
 
--spec destage_none(Stage, Frames, Size) -> Result when
-    Stage :: staging(),
+-spec destage_none(Data, Frames, Size, Max) -> Result when
+    Data :: #quic_data{},
     Frames :: [Frame],
-    Frame :: binary(),
+    Frame :: quic_frame(),
     Size :: non_neg_integer(),
-    Result :: {Stage, Frames, Size}.
+    Max :: non_neg_integer(),
+    Result :: {ok, Data, Frames}.
 
-destage_none(#stage{unpacked = QUP0,
-                    unpacked_len = Len
-                   } = Stage,
-             _Frames, _Size) ->
+destage_none(#quic_data{send_queue = 
+                          #stage{unpacked = QUP0,
+                                 unpacked_len = Len
+                                } = Stage} = Data,
+             _Frames, _Size, Max) ->
 
   %% No packing is performed. Just add and return.
   %% Frames and Size will be empty or 0.
   {{value, {_, Frame}}, QUP} = dequeue(QUP0),
 
-  {Stage#stage{unpacked = QUP,unpacked_len = Len - 1},
-   [Frame], byte_size(Frame)}.
+  {ok,
+   Data#quic_data{send_queue = Stage#stage{unpacked = QUP,unpacked_len = Len - 1}},
+   [Frame]}.
 
-%% TODO: Find a better way to program this.
--spec destage_low(Stage, Frames, Size) -> Result when
-    Stage :: staging(),
+
+-spec destage_low(Data, Frames, Size, Max) -> Result when
+    Data :: #quic_data{},
     Frames :: [Frame],
-    Frame :: binary(),
+    Frame :: quic_frame(),
     Size :: non_neg_integer(),
-    Result :: {Stage, Frames, Size}.
+    Max :: non_neg_integer(),
+    Result :: {ok, Data, Frames}.
 
-destage_low(#stage{unpacked = QUP0,
-                   unpacked_len = Len1,
-                   pack1 = QP1_0} = Stage,
-            []=Frames, 0=Size) ->
-  %% Frames is empty, so unpacked frames are considered.
+destage_low(#quic_data{send_queue = 
+                         #stage{unpacked = QUP0,
+                                unpacked_len = Len1,
+                                pack1 = QP1_0} = Stage
+                      } = Data,
+            Frames, Size, Max) when Len1 > 0 ->
   case {dequeue(QUP0), dequeue(QP1_0)} of
-    {{{value, {P1, Frame1}}, QUP},
-     {{value, {P2, Frame2}}, QP1}} when P1 < P2 ->
+    {{{value, {P1, #{binary := Bin1} = Frame1}}, QUP},
+     {{value, {P2, #{binary := Bin2} = Frame2}}, QP1}} when P1 < P2 ->
       %% Frames exist in both. Choose the one with the lower p_num
       %% The unpacked queue has a greater priority
       if
-        byte_size(Frame1) + Size < ?MAX ->
+        byte_size(Bin1) + Size < Max ->
           %% The frame does fit, so choose it.
           %% See if any frames in the pack queue fit.
-          destage_low(Stage#stage{unpacked = QUP,
-                                  unpacked_len = Len1-1},
-                      [Frame1 | Frames], Size + byte_size(Frame1));
+          destage_low(Data#quic_data{send_queue = 
+                                       Stage#stage{unpacked = QUP,
+                                                   unpacked_len = Len1 - 1}},
+                      [Frame1 | Frames], Size + byte_size(Bin1), Max);
 
-        byte_size(Frame2) + Size < ?MAX ->
+        byte_size(Bin2) + Size < Max ->
           %% The high priority doesn't fit, but the other does.
           %% See if any more frames in the pack queue fit.
-          destage_low(Stage#stage{pack1 = QP1, 
-                                  pack1_len = Len1-1},
-                      [Frame2 | Frames], Size + byte_size(Frame2));
+          destage_low(Data#quic_data{send_queue = 
+                                       Stage#stage{pack1 = QP1, 
+                                                   pack1_len = Len1-1}},
+                      [Frame2 | Frames], Size + byte_size(Bin2), Max);
 
         true ->
           %% Neither frame fits, so return
-          {Stage, Frames, Size}
+          {ok, Data, Frames}
       end;
 
     {{_, _},
-     {{value, {_P2, Frame2}}, QP1}} when byte_size(Frame2) + Size < ?MAX ->
+     {{value, {_P2, #{binary := Bin} = Frame2}}, QP1}} when byte_size(Bin) + Size < Max ->
       %% The unpacked queue is empty or too big and the pack frame fits.
       %% Check if any more pack frames fit.
-      destage_low(Stage#stage{pack1 = QP1,
-                              pack1_len = Len1-1},
-                  [Frame2 | Frames], Size + byte_size(Frame2));
+      destage_low(Data#quic_data{send_queue = Stage#stage{pack1 = QP1,
+                                                          pack1_len = Len1-1}},
+                  [Frame2 | Frames], Size + byte_size(Bin), Max);
 
-    {{{value, {_P1, Frame1}}, QUP},
-     {_, _}} when byte_size(Frame1) + Size < ?MAX ->
+    {{{value, {_P1, #{binary := Bin} = Frame1}}, QUP},
+     {_, _}} when byte_size(Bin) + Size < Max ->
       %% The unpacked queue fits and the pack frame is empty.
       %% Add unpacked frame and return.
-      destage_low(Stage#stage{unpacked = QUP,
-                              unpacked_len = Len1 - 1},
-                  [Frame1 | Frames], Size + byte_size(Frame1))
+      destage_low(Data#quic_data{send_queue = Stage#stage{unpacked = QUP,
+                                                          unpacked_len = Len1 - 1}},
+                                 [Frame1 | Frames], Size + byte_size(Bin), Max)
   end;
 
-destage_low(#stage{pack1 = QP1_0,
-                   pack1_len = Len} = Stage,
-            Frames, Size) ->
+destage_low(#quic_data{send_queue = 
+                         #stage{pack1 = QP1_0,
+                                pack1_len = Len} = Stage
+                      } = Data,
+            Frames, Size, Max) ->
   %% Frames is not empty so only consider packing frames.
   case dequeue(QP1_0) of
-    {{value, {_, Frame}}, QP1} when byte_size(Frame) + Size < ?MAX ->
+    {{value, {_, #{binary := Bin} = Frame}}, QP1} when byte_size(Bin) + Size < Max ->
       %% There is a frame to queue and it is not too large.
       %% Add it and see if more can be added.
-      destage_low(Stage#stage{pack1 = QP1,
-                              pack1_len = Len-1},
-                  [Frame | Frames], Size + byte_size(Frame));
+      destage_low(Data#quic_data{send_queue = Stage#stage{pack1 = QP1,
+                                                          pack1_len = Len-1}},
+                  [Frame | Frames], Size + byte_size(Bin), Max);
     _2Big ->
       %% Either: there is a frame, but it's too big or
       %% Nothing in the packing queue so return.
-      {Stage, Frames, Size}
+      {ok, Data, Frames}
   end.
 
 
--spec destage_balanced(Stage, Frames, Size) -> Result when
-    Stage :: staging(),
+-spec destage_balanced(Data, Frames, Size, Max) -> Result when
+    Data :: #quic_data{},
     Frames :: [Frame],
-    Frame :: binary(),
+    Frame :: quic_frame(),
     Size :: non_neg_integer(),
-    Result :: {Stage, Frames, Size} | {Stage, empty}.
+    Max :: non_neg_integer(),
+    Result :: {ok, Data, Frames} | empty.
 
-destage_balanced(#stage{unpacked_len = Len0,
-                        pack1 = QP1_0,
-                        pack1_len = Len1,
-                        pack2 = QP2_0,
-                        pack2_len = Len2} = Stage,
-                 Frames, Size) when Len0 == 0;
-                                    length(Frames) /= 0 ->
+destage_balanced(#quic_data{
+                    priority_num = P_Num,
+                    send_queue = #stage{unpacked_len = Len0,
+                                        pack1 = QP1_0,
+                                        pack1_len = Len1,
+                                        pack2 = QP2_0,
+                                        pack2_len = Len2} = Stage
+                   } = Data,
+                 Frames, Size, Max) when Len0 == 0;
+                                         length(Frames) /= 0 ->
   %% Either there are no unpacked frames to consider or a frame 
   %% has already been chosen so unpacked is not considered.
 
   case {dequeue(QP1_0), dequeue(QP2_0)} of
-    {{{value, {P2, Frame2}}, QP1},
-     {{value, {P3, Frame3}}, QP2}} ->
+    {{{value, {P2, #{binary := Bin2} = Frame2}}, QP1},
+     {{value, {P3, #{binary := Bin3} = Frame3}}, QP2}} ->
       %% Frames exist in both.
       if
-        P3 < P2, byte_size(Frame3) + Size < ?MAX ->
+        P3 < P2, byte_size(Bin3) + Size < Max ->
           %% The queue larger than BAL has the highest priority.
           %% Add it if it fits and try adding more frames < BAL (pack1)
           %% until no more fit. Only one frame > BAL can be chosen.
-          destage_low(Stage#stage{pack2 = QP2,
-                                  pack2_len = Len2 - 1},
-                      [Frame3], byte_size(Frame3));
+          destage_low(Data#quic_data{send_queue = 
+                                       Stage#stage{pack2 = QP2,
+                                                   pack2_len = Len2 - 1}},
+                      [Frame3], byte_size(Bin3), Max);
         
-        byte_size(Frame2) + Size < ?MAX ->
+        byte_size(Bin2) + Size < Max ->
           %% pack2 either does not have the top priority or
           %% pack2 doesn't fit, but pack1 does.
           %% Try adding more frames < BAL (pack1) until no more fit.
-          destage_low(Stage#stage{pack1 = QP1,
-                                  pack1_len = Len1 - 1},
-                      [Frame2 | Frames], byte_size(Frame2));
+          destage_low(Data#quic_data{
+                        send_queue = Stage#stage{pack1 = QP1,
+                                                 pack1_len = Len1 - 1}},
+                      [Frame2 | Frames], byte_size(Bin2), Max);
 
         true ->
           %% No more fit so return.
-          {Stage, Frames, Size}
+          {ok, Data, Frames}
         end;
 
-    {{{value, {_P2, Frame2}}, QP1}, {empty, _}} when 
-        byte_size(Frame2) + Size < ?MAX ->
+    {{{value, {_P2, #{binary := Bin2} = Frame2}}, QP1}, {empty, _}} when 
+        byte_size(Bin2) + Size < Max ->
       %% pack2 is empty, but pack1 has an item and fits.
       
-      destage_low(Stage#stage{pack1=QP1,
-                              pack1_len = Len1 - 1},
-                  [Frame2 | Frames], Size + byte_size(Frame2));
+      destage_low(Data#quic_data{
+                    send_queue = Stage#stage{pack1=QP1,
+                                             pack1_len = Len1 - 1}},
+                  [Frame2 | Frames], Size + byte_size(Bin2), Max);
 
-    {{empty, _}, {{value, {_P3, Frame3}}, QP2}} ->
+    {{empty, _}, {{value, {_P3, #{binary := Bin3} = Frame3}}, QP2}} ->
       %% Only pack2 has frames remaining, so return.
       %% There can only be one frame from pack2.
-      {Stage#stage{pack2 = QP2, pack2_len = Len2 - 1},
-       [Frame3], byte_size(Frame3)};
+      {ok, Data#quic_data{send_queue = Stage#stage{pack2 = QP2, pack2_len = Len2 - 1}},
+       [Frame3]};
 
     _ ->
       %% Both queues are now empty.
-      {Stage, Frames, Size}
+      {ok, Data, Frames}
   end;
 
-destage_balanced(#stage{unpacked = QUP0,
-                        unpacked_len = Len0,
-                        pack1 = QP1_0,
-                        pack1_len = Len1,
-                        pack2 = QP2_0,
-                        pack2_len = Len2} = Stage,
-                 [] = Frames, 0 = Size) ->
+destage_balanced(#quic_data{
+                    send_queue = #stage{unpacked = QUP0,
+                                        unpacked_len = Len0,
+                                        pack1 = QP1_0,
+                                        pack1_len = Len1,
+                                        pack2 = QP2_0,
+                                        pack2_len = Len2} = Stage
+                   } = Data,
+                 Frames, Size, Max) when Len0 > 0 ->
   %% Frames is empty, so unpacked frames are considered.
-  {{value, {P1, Frame1}}, QUP} = dequeue(QUP0),
+  {{value, {P1, #{binary := Bin1} = Frame1}}, QUP} = dequeue(QUP0),
 
   case {dequeue(QP1_0), dequeue(QP2_0)} of
-    {{{value, {P2, Frame2}}, QP1},
-     {{value, {P3, Frame3}}, QP2}} ->
+    {{{value, {P2, #{binary := Bin2} = Frame2}}, QP1},
+     {{value, {P3, #{binary := Bin3} = Frame3}}, QP2}} ->
       %% Frames exist in all.
       if
-        P1 < P2, P1 < P3 ->
+        P1 < P2, P1 < P3, byte_size(Bin1) =< Max ->
           %% The unpacked queue has the greatest priority.
           %% Try adding more frames < BAL (pack1) until no more fit.
-          destage_low(Stage#stage{unpacked = QUP,
-                                  unpacked_len = Len0 - 1},
-                      [Frame1], byte_size(Frame1));
+          destage_low(Data#quic_data{
+                        send_queue = Stage#stage{unpacked = QUP,
+                                                 unpacked_len = Len0 - 1}},
+                      [Frame1 | Frames], byte_size(Bin1) + Size, Max);
         
-        P3 < P1, P3 < P2 ->
+        P3 < P2, (P3 < P1 orelse byte_size(Bin1) > Max), byte_size(Bin3) =< Max ->
           %% The queue larger than BAL has the highest priority.
           %% Add it and try adding more frames < BAL (pack1)
           %% until no more fit.
-          destage_low(Stage#stage{pack2 = QP2,
-                                  pack2_len = Len2 - 1},
-                      [Frame3], byte_size(Frame3));
+          destage_low(Data#quic_data{
+                        send_queue = Stage#stage{pack2 = QP2,
+                                                 pack2_len = Len2 - 1}},
+                      [Frame3 | Frames], byte_size(Bin3) + Size, Max);
         
-        P2 < P1, P2 < P3 ->
+        (P2 < P1 orelse byte_size(Bin1) > Max), (P2 < P3 orelse byte_size(Bin3) > Max) ->
           %% The queue less than BAL has the highest priority.
           %% Add it and try adding frames from pack1 or pack2.
-          destage_balanced(Stage#stage{pack1 = QP1,
-                                       pack1_len = Len1 - 1},
-                           [Frame2], byte_size(Frame2))
+          destage_balanced(Data#quic_data{
+                             send_queue = Stage#stage{pack1 = QP1,
+                                                      pack1_len = Len1 - 1}},
+                           [Frame2 | Frames], byte_size(Bin2) + Size, Max)
       end;
     
     {{_, _}, {empty, _}} ->
-      destage_low(Stage, Frames, Size);
+      destage_low(Data, Frames, Size, Max);
     
-    {{empty, _}, {{value, {P3, _Frame3}}, _QP2}} when P1 < P3 ->
-      destage_balanced(Stage#stage{unpacked = QUP,
-                                   unpacked_len = Len0 - 1},
-                       [Frame1], byte_size(Frame1));
+    {{empty, _}, {{value, {P3, _Frame3}}, _QP2}} when P1 < P3, byte_size(Bin1) =< Max ->
+      destage_balanced(Data#quic_data{
+                         send_queue = Stage#stage{unpacked = QUP,
+                                                  unpacked_len = Len0 - 1}},
+                       [Frame1 | Frames], byte_size(Bin1) + Size, Max);
     
-    {{empty, _}, {{value, {_P3, Frame3}}, QP2}} ->
-      destage_low(Stage#stage{pack2 = QP2,
-                              pack2_len = Len2 - 1},
-                  [Frame3], byte_size(Frame3))
+    {{empty, _}, {{value, {_P3, #{binary := Bin3} = Frame3}}, QP2}} when byte_size(Bin3) =< Max ->
+      destage_low(Data#quic_data{
+                    send_queue = Stage#stage{pack2 = QP2,
+                                             pack2_len = Len2 - 1}},
+                  [Frame3 | Frames], byte_size(Bin3) + Size, Max)
   end.
 
 
--spec destage_high(Stage, Frames, Size) -> Result when
-    Stage :: staging(),
+-spec destage_high(Data, Frames, Size, Max) -> Result when
+    Data :: #quic_data{},
     Frames :: [Frame],
     Frame :: binary(),
     Size :: non_neg_integer(),
-    Result :: {Stage, Frames, Size} | {Stage, empty}.
+    Max :: non_neg_integer(),
+    Result :: {ok, Data, Frames} | empty.
 
-destage_high(_Stage, _Frames, _Size) ->
-  undefined.
+destage_high(Data, Frames, Size, Max) ->
+  %% Not implemented yet. Probably not necessary.
+  destage_balanced(Data, Frames, Size, Max).
 
 
 -spec dequeue(Queue) -> Result when
-    Queue :: queue:queue(Item),
+    Queue :: ?MOD:queue(Item),
     Result :: {{value, Item}, Queue} |
               {empty, Queue},
-    Item :: {P_Num, Frame},
+    Item :: {P_Num, Frame} | Frame,
     P_Num :: non_neg_integer(),
-    Frame :: binary().
+    Frame :: quic_frame().
 
 dequeue(Queue) ->
-  queue:out(Queue).
+  ?MOD:out(Queue).
 
 
 -spec enqueue(Item, Queue) -> Queue when
-    Item :: {P_Num, Frame},
+    Item :: {P_Num, Frame} | Frame,
     P_Num :: non_neg_integer(),
-    Frame :: binary(),
-    Queue :: queue:queue(Item).
+    Frame :: quic_frame(),
+    Queue :: ?MOD:queue(Item).
 
 enqueue(Item, Queue) ->
   ?MOD:in(Item, Queue).
