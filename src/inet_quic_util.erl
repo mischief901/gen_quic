@@ -8,7 +8,7 @@
 -module(inet_quic_util).
 
 %% API
--export([quic_module/1, quic_module/2]).
+-export([quic_module/0, quic_module/1, quic_module/2]).
 -export([getservbyname/2]).
 -export([is_opt/2]).
 -export([get_opt/2]).
@@ -221,15 +221,17 @@ is_opt(Opts, Field) ->
 get_opt(Opts, Type) ->
   proplists:lookup(Type, Opts).
 
+quic_module() ->
+  inet_quic.
 
 quic_module(Opts) ->
   %% Calling inet's mod function should work, but it isn't exported.
-  mod(Opts, quic_module, undefined, #{inet => inet_quic, 
+  mod(Opts, quic_module, undefined, #{inet => inet_quic,
                                       inet6 => inet6_quic,
                                       local => inet_quic}).
 
 quic_module(Opts, Address) ->
-  mod(Opts, quic_module, Address, #{inet => inet_quic, 
+  mod(Opts, quic_module, Address, #{inet => inet_quic,
                                     inet6 => inet6_quic,
                                     local => inet_quic}).
 
@@ -267,12 +269,12 @@ mod([], Tag, Address, Map, undefined, Acc) ->
        %%   _ ->
        %%     inet_db:Tag()
        %% end;       
-       maps:get(local, Map, inet_db:Tag());
+       maps:get(local, Map, inet_quic_util:Tag());
 
      {_, IP} when tuple_size(IP) =:= 8 ->
        #{inet := IPv4Mod} = Map,
        %% Get the mod, but IPv6 address overrides default IPv4
-       case inet_db:Tag() of
+       case inet_quic_util:Tag() of
          IPv4Mod ->
            #{inet6 := IPv6Mod} = Map,
            IPv6Mod;
@@ -280,7 +282,7 @@ mod([], Tag, Address, Map, undefined, Acc) ->
            Mod
        end;
      _ ->
-       inet_db:Tag()
+       inet_quic_util:Tag()
    end, lists:reverse(Acc)};
 
 mod([], _Tag, _Address, _Map, Mod, Acc) ->

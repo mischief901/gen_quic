@@ -1,16 +1,15 @@
 %%%-------------------------------------------------------------------
-%%% @author alex <alex@alex-Lenovo>
+%%% @author alex
 %%% @copyright (C) 2018, alex
 %%% @doc
 %%%  This dispatches to the version specific parser and encoder of packets.
 %%% @end
-%%% Created :  5 Jun 2018 by alex <alex@alex-Lenovo>
 %%%-------------------------------------------------------------------
 -module(quic_vx_1).
 
 %% API
--export([parse_frames/2]).
--export([form_packet/2, form_packet/3]).
+-export([parse_frames/1, form_frame/1]).
+-export([form_packet/3]).
 
 -include("quic_headers.hrl").
 
@@ -18,35 +17,28 @@
 %%% API
 %%%===================================================================
 
--spec parse_frames(Payload, Data) -> Result when
+-spec parse_frames(Payload) -> Result when
     Payload :: binary(),
-    Data :: #quic_data{},
-    Result :: {Data, Frames, TLS_Info} |
+    Result :: {Frames, Ack_Frames, TLS_Info} |
               {error, Reason},
     Frames :: [Frame],
+    Ack_Frames :: [Frame],
     Frame :: quic_frame(),
     TLS_Info :: #tls_record{},
     Reason :: gen_quic:error().
 
-parse_frames(Payload, Data) ->
-  quic_parser_vx_1:parse_frames(Payload, Data).
+parse_frames(Payload) ->
+  quic_parser_vx_1:parse_frames(Payload).
 
 
--spec form_packet(Type, Data) -> Result when
-    Type :: retry |
-            vx_neg,
-    Data :: #quic_data{},
-    Result :: {ok, Data, Packet} | {error, Reason},
-    Packet :: binary(),
-    Reason :: gen_quic:error().
-%% TODO: Obviously.
-form_packet(retry, 
-            #quic_data{conn = #quic_conn{}}= Data) ->
-  
-  {ok, Data, <<>>};
+-spec form_frame(Frame_Info) -> Result when
+    Frame_Info :: quic_frame(),
+    Result :: {ok, quic_frame()} |
+              {error, Reason},
+    Reason :: gen_quic:frame_error().
 
-form_packet(vx_neg, Data) ->
-  ok.
+form_frame(Frame_Info) ->
+  quic_encoder_vx_1:form_frame(Frame_Info).
 
 
 %% This needs updating. Should only form payload or header.
@@ -169,7 +161,6 @@ form_header(short,
               } = Data,
             Payload) ->
 
-  Dest_Conn_Len = quic_utils:to_conn_length(Dest_ID),
   Pkt_Num_Bin = quic_utils:to_var_pkt_num(Pkt_Num),
 
   Header = <<0:1, 0:1, 1:1, 1:1, 0:1, 0:1, 0:1, 0:1, Dest_ID/binary>>,

@@ -10,7 +10,7 @@
 -type conn_id() :: binary().
 
 %% Maybe change error_code to an atom to be more descriptive.
--type error_code() :: non_neg_integer().
+-type error_code() :: non_neg_integer() | binary().
 
 -export_type([stream_id/0, offset/0, conn_id/0, error_code/0]).
 
@@ -74,162 +74,133 @@
          group         :: undefined | any() %%group()
         }).
 
-
-%% %% This needs some more thought.
-%% %% The idea is that largest_ack keeps track of the largest previously acked packet,
-%% %% previous_gaps is a list of packets that were missing in the previous packet,
-%% %% acks is a list of packet numbers that need to be acknowledged in the next packet,
-%% %% delay is the millisecond delay between when the first ack is added to acks and all
-%% %% the acks are sent.
-%% %%
-%% %% Previous_Gaps should be emptied after a few rounds. This is probably good
-%% %% for a streaming function to handle as a filter, but that might be too complicated.
-%% -record(quic_ack, 
-%%         {
-%%          ack_fun :: fun((Pkt_Num :: non_neg_integer()) -> Window :: binary()),
-%%          window_fun :: fun((Last_Window :: binary(), Largest_Ack :: non_neg_integer()) -> Ack_Fun :: fun(..)),
-%%          largest_ack :: non_neg_integer(),
-%%          last_window :: binary(),
-%%          ack_delay :: pos_integer(),
-%%          ack_delay_exp :: pos_integer()
-%%         }).
-
 -type group() :: {atom(), atom()}.
 
 -type version() :: binary().
 -export_type([version/0]).
 
 %% All the frame types and fields.
-%% Padding frames do not contain any information so they do not have a type.
-%% Crypto frames are covered in #tls_record{}.
--type quic_frame() :: 
+-type quic_frame() ::
         #{
-          type := ping,
-          binary := binary(),
-          retransmit := false
+          type => padding,
+          length => non_neg_integer(),
+          binary => binary()
          }
       |
         #{
-          type := max_data,
-          max_data := offset(),
-          binary := binary(),
-          retransmit := true
+          type => ping,
+          binary => binary()
          }
       |
         #{
-          type := max_stream_id,
-          max_stream_id := stream_id(),
-          binary := binary(),
-          retransmit := true
+          type => max_data,
+          max_data => offset(),
+          binary => binary(),
+          retransmit => true
          }
       |
         #{
-          type := data_blocked,
-          offset := offset(),
-          binary := binary(),
-          retransmit := true
+          type => max_stream_id,
+          max_stream_id => stream_id(),
+          binary => binary(),
+          retransmit => true
          }
       |
         #{
-          type := stream_id_blocked,
-          stream_id := stream_id(),
-          binary := binary(),
-          retransmit := true
+          type => data_blocked,
+          offset => offset(),
+          binary => binary(),
+          retransmit => true
          }
       |
         #{
-          type := path_challenge | path_response,
-          challenge := binary(),
-          binary := binary(),
-          retransmit := false
+          type => stream_id_blocked,
+          stream_id => stream_id(),
+          binary => binary(),
+          retransmit => true
          }
       |
         #{
-          type := stop_sending,
-          stream_id := stream_id(),
-          binary := binary(),
-          retransmit := false
+          type => path_challenge | path_response,
+          challenge => binary(),
+          binary => binary()
          }
       |
         #{
-          type := stream_data_blocked,
-          stream_id := stream_id(),
-          offset := offset(),
-          stream_owner := 0 | 1,
-          stream_type := 0 | 1,
-          binary := binary(),
-          retransmit := true
+          type => stop_sending,
+          stream_id => stream_id(),
+          binary => binary()
+         }
+      |
+        #{
+          type => stream_data_blocked,
+          stream_id => stream_id(),
+          offset => offset(),
+          stream_owner => 0 | 1,
+          stream_type => 0 | 1,
+          binary => binary(),
+          retransmit => true
          }
       | 
         #{
-          type := max_stream_data,
-          stream_id := stream_id(),
-          max_stream_data := offset(),
-          stream_owner := 0 | 1,
-          stream_type := 0 | 1,
-          binary := binary(),
-          retransmit := true
+          type => max_stream_data,
+          stream_id => stream_id(),
+          max_stream_data => offset(),
+          binary => binary(),
+          retransmit => true
          }
       |
         #{
-          type := app_close | conn_close,
-          error_code := error_code(),
-          error_message := binary(),
-          binary := binary(),
-          retransmit := false
+          type => app_close | conn_close,
+          error_code => error_code(),
+          error_message => binary(),
+          binary => binary()
          }
       | 
         #{
-          type := rst_stream,
-          stream_id := stream_id(),
-          error_code := error_code(),
-          binary := binary(),
-          retransmit := true
+          type => rst_stream,
+          stream_id => stream_id(),
+          error_code => error_code(),
+          binary => binary(),
+          retransmit => true
          }
       | 
         #{
-          type := new_conn_id,
-          conn_id := conn_id(),
-          token := binary(),
-          sequence := integer(),
-          binary := binary(),
-          retransmit := true
+          type => new_conn_id,
+          conn_id => conn_id(),
+          token => binary(),
+          sequence => integer(),
+          binary => binary(),
+          retransmit => true
          }
       |
         #{
-          type := stream_open | stream_close | stream_data,
-          stream_id := stream_id(),
-          offset := offset(),
-          stream_owner := 0 | 1,
-          stream_type := 0 | 1,
-          data := binary(),
-          binary := binary(),
-          retransmit := true
+          type => stream_open | stream_close | stream_data,
+          stream_id => stream_id(),
+          offset => offset(),
+          binary => binary(),
+          retransmit => true
          }
       |
         #{
-          type := ack_frame,
-          largest_ack := non_neg_integer(),
-          smallest_ack := non_neg_integer(),
-          ack_delay := non_neg_integer(),
-          block_count := non_neg_integer(),
-          acks := [non_neg_integer()],
-          gaps := [non_neg_integer()],
-          binary := binary(),
-          retransmit := false
+          type => ack_frame,
+          ack_delay => non_neg_integer(),
+          largest => non_neg_integer(),
+          acks => [non_neg_integer()],
+          ecn_count => {non_neg_integer(), non_neg_integer(), non_neg_integer()},
+          binary => binary()
          }
       | 
-        #{type := 
-            encrypted_exts |
+        #{type => crypto,
+          crypto_type => encrypted_exts |
           server_hello |
           client_hello |
           certificate |
           cert_verify |
           finished,
-          offset := non_neg_integer(),
-          retransmit := true,
-          binary := binary()}.
-
+          offset => non_neg_integer(),
+          retransmit => true,
+          binary => binary()}.
 
 -export_type([quic_frame/0]).
 
@@ -263,7 +234,7 @@
          init_max_uni_streams  :: undefined | non_neg_integer(),
          max_packet_size       :: undefined | non_neg_integer(),
          ack_delay_exp = 3     :: non_neg_integer(),
-         migration = true      :: undefined | boolean(),
+         migration = true      :: boolean(),
          reset_token           :: undefined | binary(),
          preferred_address     :: undefined | #quic_pref_addr{}
         }).

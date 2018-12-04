@@ -128,9 +128,19 @@ init([Balancer_Opts]) ->
   Max_Stream_ID_Uni = maps:get(max_stream_id_uni, Balancer_Opts, infinity),
   Uni_Incr = maps:get(stream_id_incr_uni, Balancer_Opts, 1),
   Default_Stream_Options = maps:get(default_stream_opts, Balancer_Opts, #{}),
+
+  Version = case Balancer_Opts of
+              %% Get either the module or the binary of the quic version in use.
+              %% Default to version 1 (quic_vx_1).
+              #{vx_module := Mod} -> Mod;
+              #{version   := Binary} -> Binary;
+              _ -> quic_vx_1
+            end,
+
   case Balancer_Type of
     none ->
       {ok, #{type => Balancer_Type,
+             version => Version,
              uni => {Uni_Init_ID, Uni_Incr, Max_Stream_ID_Uni},
              bidi => {Bidi_Init_ID, Bidi_Incr, Max_Stream_ID_Bidi},
              stream_pids => undefined,
@@ -140,6 +150,7 @@ init([Balancer_Opts]) ->
       };
     {custom, Module} ->
       {ok, #{type => Balancer_Type,
+             version => Version,
              uni => {Uni_Init_ID, Uni_Incr, Max_Stream_ID_Uni},
              bidi => {Bidi_Init_ID, Bidi_Incr, Max_Stream_ID_Bidi},
              stream_pids => Module:init(),
@@ -150,6 +161,7 @@ init([Balancer_Opts]) ->
     {max_proc, Max_Stream_Per_Proc} ->
       %% explained below
       {ok, #{type => Balancer_Type,
+             version => Version,
              uni => {Uni_Init_ID, Uni_Incr, Max_Stream_ID_Uni},
              bidi => {Bidi_Init_ID, Bidi_Incr, Max_Stream_ID_Bidi},
              stream_pids => {Max_Stream_Per_Proc,
@@ -200,6 +212,7 @@ handle_call({open_stream, _Socket, #{type := uni}}, _Owner,
 
 handle_call({open_stream, Socket, #{type := bidi} = Options}, Owner,
             #{type := Type,
+              version := Version,
               bidi := {Stream_ID, Incr, Max_ID},
               stream_pids := Stream_Pids0,
               default_stream_options := Default_Options
@@ -210,7 +223,7 @@ handle_call({open_stream, Socket, #{type := bidi} = Options}, Owner,
       {reply, {ok, {Socket, Stream_ID}}, State#{bidi := {Stream_ID + Incr, Incr, Max_ID},
                                                 stream_pids := Stream_Pids1}};
     {error, empty} ->
-      {ok, Pid} = quic_stream:open_stream(Socket, Default_Options),
+      {ok, Pid} = quic_stream:open_stream(Socket, Version, Default_Options),
       quic_stream:add_stream(Pid, Owner, Stream_ID, Options),
       {ok, Stream_Pids1} = add_proc(Type, Stream_Pids0, Pid),
       {reply, {ok, {Socket, Stream_ID}}, State#{bidi := {Stream_ID + Incr, Incr, Max_ID},
@@ -219,6 +232,7 @@ handle_call({open_stream, Socket, #{type := bidi} = Options}, Owner,
 
 handle_call({open_stream, Socket, #{type := uni} = Options}, Owner,
             #{type := Type,
+              version := Version,
               uni := {Stream_ID, Incr, Max_ID},
               stream_pids := Stream_Pids0,
               default_stream_options := Default_Options
@@ -229,7 +243,7 @@ handle_call({open_stream, Socket, #{type := uni} = Options}, Owner,
       {reply, {ok, {Socket, Stream_ID}}, State#{uni := {Stream_ID + Incr, Incr, Max_ID},
                                                 stream_pids := Stream_Pids1}};
     {error, empty} ->
-      {ok, Pid} = quic_stream:open_stream(Socket, Default_Options),
+      {ok, Pid} = quic_stream:open_stream(Socket, Version, Default_Options),
       quic_stream:add_stream(Pid, Owner, Stream_ID, Options),
       {ok, Stream_Pids1} = add_proc(Type, Stream_Pids0, Pid),
       {reply, {ok, {Socket, Stream_ID}}, State#{uni := {Stream_ID + Incr, Incr, Max_ID},
@@ -246,6 +260,7 @@ handle_call({open_peer_stream, _Socket, Stream_ID, #{type := uni}}, _,
 
 handle_call({open_peer_stream, Socket, Stream_ID, #{type := bidi} = Frame}, _,
             #{type := Type,
+              version := Version,
               bidi := {Next_ID, Incr, Max_ID},
               stream_pids := Stream_Pids0,
               default_stream_options := Default_Options
@@ -265,7 +280,7 @@ handle_call({open_peer_stream, Socket, Stream_ID, #{type := bidi} = Frame}, _,
       {reply, {ok, {Socket, Stream_ID}}, State#{stream_pids := Stream_Pids1}};
     
     {error, empty} ->
-      {ok, Pid} = quic_stream:open_stream(Socket, Default_Options),
+      {ok, Pid} = quic_stream:open_stream(Socket, Version, Default_Options),
       quic_stream:add_peer_stream(Pid, Stream_ID, Frame),
       {ok, Stream_Pids1} = add_proc(Type, Stream_Pids0, Pid),
       {reply, {ok, {Socket, Stream_ID}}, State#{bidi := {Stream_ID + Incr, Incr, Max_ID},
@@ -274,6 +289,7 @@ handle_call({open_peer_stream, Socket, Stream_ID, #{type := bidi} = Frame}, _,
 
 handle_call({open_stream_peer, Socket, Stream_ID, #{type := uni} = Frame}, _,
             #{type := Type,
+              version := Version,
               uni := {Next_ID, Incr, Max_ID},
               stream_pids := Stream_Pids0,
               default_stream_options := Default_Options
@@ -293,7 +309,7 @@ handle_call({open_stream_peer, Socket, Stream_ID, #{type := uni} = Frame}, _,
       {reply, {ok, {Socket, Stream_ID}}, State#{stream_pids := Stream_Pids1}};
 
     {error, empty} ->
-      {ok, Pid} = quic_stream:open_stream(Socket, Default_Options),
+      {ok, Pid} = quic_stream:open_stream(Socket, Version, Default_Options),
       quic_stream:add_peer_stream(Pid, Stream_ID, Frame),
       {ok, Stream_Pids1} = add_proc(Type, Stream_Pids0, Pid),
       {reply, {ok, {Socket, Stream_ID}}, State#{uni := {Stream_ID + Incr, Incr, Max_ID},

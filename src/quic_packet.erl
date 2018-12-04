@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% @author alex <alex@alex-Lenovo>
+%%% @author alex
 %%% @copyright (C) 2018, alex
 %%% @doc
 %%%  This module splits the packet into a list of tuples with header
@@ -10,15 +10,13 @@
 %%%  The parse_header/2 function returns a list due to the possibility of
 %%%  coalesced packets.
 %%% @end
-%%% Created : 16 May 2018 by alex <alex@alex-Lenovo>
 %%%-------------------------------------------------------------------
 -module(quic_packet).
 
 %% API
 -export([parse_header/2]).
 -export([parse_frames/2]).
--export([form_packet/2, form_packet/3]).
--export([create_ack_frame/1]).
+-export([form_packet/2, form_packet/3, form_packet/4]).
 -export([form_frame/2]).
 
 -include("quic_headers.hrl").
@@ -90,7 +88,7 @@ parse_header(<<1:1, 16#7e:7, Version:4/binary, DCIL:4, SCIL:4, Rest/binary>>,
                 conn = #quic_conn{
                           dest_conn_ID = Dest_Conn,
                           src_conn_ID = Src_Conn
-                         } = Conn0
+                         }
                } = Data0) ->
   %% Retry packet
   %% First get the DCIL and SCIL lengths
@@ -269,14 +267,12 @@ parse_length(<<Header/bits>>, Data, Type, Length_Length, Header_Length) ->
 parse_frames(<<Payload/binary>>, 
              #quic_data{
                 vx_module = Module
-               } = Data) ->
+               }) ->
 
-  Module:parse_frames(Payload, Data).  
+  Module:parse_frames(Payload).
 
 
--spec form_packet(Type, Data) -> Result when
-    Type :: retry |
-            vx_neg,
+-spec form_packet(vx_neg, Data) -> Result when
     Data :: #quic_data{},
     Result :: {ok, Data, Packet} | {error, Reason},
     Packet :: binary(),
@@ -288,40 +284,34 @@ parse_frames(<<Payload/binary>>,
 %% For retry packets the initial version is used.
 form_packet(vx_neg, 
             #quic_data{
+               conn = #quic_conn{
+                         dest_conn_ID = Dest_Conn,
+                         src_conn_ID = Src_Conn
+                        },
                version = #quic_version{
                             supported_versions = Versions
                            }
-              } = Data0) ->
-  
-  {error, unimplemented};
-
-form_packet(retry,
-            #quic_data{
-               version = #quic_version{
-                            initial_version = Version
-                           }
               } = Data) ->
-  case quic_vxx:supported(Version) of
-    {ok, {Module, Version}} ->
-      %% Call the version specific module to form the retry packet.
-      Module:form_packet(retry, Data);
-    
-    {error, unsupported} ->
-      %% Return with unsupported if not supported.
-      {error, unsupported};
-    
-    _Other ->
-      {error, internal_error}
-  end.
+  <<_:1, Rand:7>> = crypto:strong_rand_bytes(1),
+  Version = <<0:4/unit:8>>,
+  Dest_Len = quic_utils:to_conn_length(Dest_Conn),
+  Src_Len = quic_utils:to_conn_length(Src_Conn),
+  Supported = lists:foldl(fun(Vx, Acc) when byte_size(Vx) == 4 -> <<Acc/binary, Vx/binary>> end,
+                          <<>>, Versions),
+  Packet = <<1:1, Rand:7, Version/binary, Dest_Len:4, Src_Len:4,
+             Dest_Conn/binary, Src_Conn/binary, Supported/binary>>,
+  {ok, Data, Packet}.
 
 
 -spec form_packet(Type, Data, Frames) -> Result when
-    Type :: initial |
+    Type :: retry |
+            initial |
             early_data |
             handshake |
             short,
     Data :: #quic_data{},
-    Frames :: [quic_frame()],
+    Frames :: [quic_frame()] | New_Conn_Id,
+    New_Conn_Id :: binary(),
     Result :: {ok, Data, Header, Payload, Pkt_Num} | {error, Reason},
     Header :: binary(),
     Payload :: binary(),
@@ -350,7 +340,6 @@ form_packet(Type,
       Module:form_packet(Type, Data, Frames);
     
     {error, unsupported} ->
-      %% Maybe call version negotiate at this point.
       {error, unsupported};
 
     Other ->
@@ -363,55 +352,62 @@ form_packet(Type,
                vx_module = Module
               } = Data,
             Frames) ->
-  quic_vx_1:form_packet(Type, Data, Frames).
+  Module:form_packet(Type, Data, Frames).
 
 
+-spec form_packet(retry, Data, New_Dest_Conn, Token) -> {ok, Data, Packet} when
+    Data :: #quic_data{},
+    New_Dest_Conn :: binary(),
+    Token :: binary(),
+    Packet :: binary().
 
--spec create_ack_frame(Ack_Info) -> {ok, Ack_Frame} when
-    Ack_Info :: any(),
-    Ack_Frame :: [quic_frame()].
-%% Forms the binary of the ack frame from the given ack info.
-%% Not implemented yet.
-create_ack_frame(_Ack_Info) ->
-  {ok, [#{type => ack_frame,
-          binary => <<>>,
-          retransmit => false,
-          largest_ack => 0,
-          smallest_ack => 0,
-          ack_delay => 0,
-          block_count => 0,
-          acks => [],
-          gaps => []
-         }]}.
+form_packet(retry,
+            #quic_data{
+               type = server,
+               conn = #quic_conn{
+                         dest_conn_ID = Old_Dest_Conn,
+                         src_conn_ID = Src_Conn
+                        } = Conn0,
+               version = #quic_version{
+                            initial_version = Vx_Init,
+                            negotiated_version = Vx_Neg
+                           }
+              } = Data0, New_Dest_Conn, Token) ->
+  Version = case Vx_Neg of
+              undefined -> Vx_Init;
+              _ -> Vx_Neg
+            end,
+  <<Rand:4, _/bits>> = crypto:strong_rand_bytes(1),
+  Old_Dest_Len = quic_utils:to_conn_length(Old_Dest_Conn),
+  Dest_Len = quic_utils:to_conn_length(New_Dest_Conn),
+  Src_Len = quic_utils:to_conn_length(Src_Conn),
+  Packet = <<1:1, 16#7e:7, Version/binary, Dest_Len:4, Src_Len:4, New_Dest_Conn/binary,
+             Src_Conn/binary, Rand:4, Old_Dest_Len:4, Old_Dest_Conn/binary,
+             Token/binary>>,
+  Data = Data0#quic_data{conn = Conn0#quic_conn{dest_conn_ID = New_Dest_Conn},
+                         retry_token = Token},
+  {ok, Data, Packet}.
 
 
--spec form_frame(Type, Info) -> {ok, Frame} when
-    Type :: crypto, %% will be expanded later for stream frames.
-    Info :: {Crypto_Type, Offset, binary()}, %% will be expanded later for stream frames.
-    Crypto_Type :: server_hello |
-                   client_hello |
-                   encrypted_exts |
-                   certificate |
-                   cert_verify |
-                   finished,
-    Offset :: non_neg_integer(),
-    Frame :: [quic_frame()].
+-spec form_frame(Version, Frame_Info) -> Result when
+    Version :: binary() | atom(),
+    Frame_Info :: quic_frame(),
+    Result :: {ok, quic_frame()} |
+              {error, Reason},
+    Reason :: gen_quic:frame_error().
 
-form_frame(crypto, {Crypto_Type, Offset, Binary}) ->
-  %% Essentially it adds the current offset, binary length, and crypto frame header
-  %% for the binary and wraps it into a quic_frame() map.
-  
-  Offset_Bin = quic_utils:to_var_length(Offset),
-  Frame_Len = quic_utils:to_var_length(byte_size(Binary)),
-  Bin_Header = <<16#18, Offset_Bin/binary, Frame_Len/binary>>,
 
-  Frame = #{type => Crypto_Type,
-            offset => Offset,
-            retransmit => true,
-            binary => <<Bin_Header/binary, Binary/binary>>
-           },
-  {ok, [Frame]}.
-  
+form_frame(_, #{}) ->
+  %% Nothing to form so return an empty frame.
+  {ok, #{type => empty, binary => <<>>}};
+
+form_frame(Version, Frame_Info) when is_binary(Version) ->
+  {ok, {Module, Version}} = quic_vxx:supported(Version),
+  Module:form_frame(Frame_Info);
+
+form_frame(Module, Frame_Info) when is_atom(Module) ->
+  Module:form_frame(Frame_Info).
+
 
 %%%%%%%%%%
 %%  Internal Functions

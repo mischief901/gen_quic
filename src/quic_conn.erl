@@ -42,26 +42,26 @@
 
 connect(Address, Port, Opts, Timeout) ->
   {ok, Quic_Opts, Udp_Opts} = inet_quic_util:parse_opts(Opts),
+  {ok, Socket} = inet_udp:open(0, [{active, false} | Udp_Opts]),
 
-  {ok, Socket} = inet_udp:open([{active, false} | Udp_Opts]),
-  
   Data = #quic_data{
             type = client,
+            vx_module = quic_vx_1,
             conn = #quic_conn{
                       socket = Socket,
                       owner = self()
                      }
            },
-
+  io:format("Starting connection.~n"),
   %% TODO: Move this to a wrapper function in quic_statem.
   {ok, Pid} = gen_statem:start_link(via(Socket), quic_statem,
                                     [Data, Quic_Opts], []),
-  
+
+  io:format("Starting balancer.~n"),
   %% TODO: Change empty list to balancer_options when available.
   {ok, _} = stream_balancer:start_balancer(Socket, #{}),
-  
   inet_udp:controlling_process(Socket, Pid),
-  
+  io:format("Connecting...~n"),
   gen_statem:call(Pid, {connect, Address, Port, Timeout}).
 
 
@@ -130,9 +130,9 @@ open(Socket, Opts) ->
 
 
 -spec send(Socket, Data) -> ok when
-    Socket :: gen_quic:socket() | {Socket, Stream_ID},
+    Socket :: gen_quic:socket() | {gen_quic:socket(), Stream_ID},
     Stream_ID :: non_neg_integer(),
-    Data :: binary() | list() | Frame,
+    Data :: binary() | Frame,
     Frame :: {Pack_Type, quic_frame()},
     Pack_Type :: none | low | balanced.
 
@@ -140,7 +140,7 @@ send(Stream, Data) when is_tuple(Stream) ->
   %% For streams.
   quic_stream:send(Stream, Data);
 
-send(Socket, {_Type, Frame} = Frames) when is_map(Frame) ->
+send(Socket, {_Type, _Frame} = Frames) ->
   %% Called by quic_stream after converted into a quic_frame map.
   gen_statem:cast(via(Socket), {send, Frames}).
 
@@ -290,6 +290,7 @@ send_and_form_packet(Pkt_Type,
                         cc_info = undefined
                         } = Data) ->
   %% congestion_control parameters are not initialized yet
+  io:format("Initializing cc info.~n"),
   send_and_form_packet(Pkt_Type, quic_cc:congestion_init(Data));
 
 send_and_form_packet(Pkt_Type, 
@@ -297,66 +298,61 @@ send_and_form_packet(Pkt_Type,
                         timer_info = undefined
                        } = Data) ->
   %% timer parameters are not initialized yet
+  io:format("Initializing timer info.~n"),
   send_and_form_packet(Pkt_Type, quic_cc:timer_init(Data));
 
 send_and_form_packet(Pkt_Type, Data) ->
+  io:format("Forming Packet: ~p~n", [Pkt_Type]),
   form_ack_frame(Pkt_Type, Data).
 
-form_ack_frame(Pkt_Type, Data0) when Pkt_Type == short;
-                                     Pkt_Type == early_data ->
+form_ack_frame(Pkt_Type, #quic_data{vx_module = Module} = Data0) when 
+    Pkt_Type == short;
+    Pkt_Type == early_data ->
   %% Acks must be in the same crypto range as the packet.
-  {ok, Data1, Ack_Info} = quic_cc:get_ack_info(application, Data0),
-  {ok, Ack_Frame} = quic_packet:create_ack_frame(Ack_Info),
+  {ok, Data1, Ack_Info} = quic_cc:get_ack(application, Data0),
+  {ok, Ack_Frame} = quic_packet:form_frame(Module, Ack_Info),
   form_frames(Pkt_Type, Data1, Ack_Frame);
 
-form_ack_frame(Pkt_Type, Data0) when Pkt_Type =:= client_hello;
-                                     Pkt_Type =:= server_hello ->
+form_ack_frame(Pkt_Type, #quic_data{vx_module = Module} = Data0) when 
+    Pkt_Type =:= client_hello;
+    Pkt_Type =:= server_hello ->
 
-  {ok, Data1, Ack_Info} = quic_cc:get_ack_info(initial, Data0),
-  {ok, Ack_Frame} = quic_packet:create_ack_frame(Ack_Info),
+  {ok, Data1, Ack_Info} = quic_cc:get_ack(initial, Data0),
+  {ok, Ack_Frame} = quic_packet:form_frame(Module, Ack_Info),
   form_crypto_frame(Pkt_Type, Data1, Ack_Frame);
 
-form_ack_frame(Pkt_Type, Data0) ->
+form_ack_frame(Pkt_Type, #quic_data{vx_module = Module} = Data0) ->
   %% All others are in the handshake range
-  {ok, Data1, Ack_Info} = quic_cc:get_ack_info(handshake, Data0),
-  {ok, Ack_Frame} = quic_packet:create_ack_frame(Ack_Info),
+  {ok, Data1, Ack_Info} = quic_cc:get_ack(handshake, Data0),
+  {ok, Ack_Frame} = quic_packet:form_frame(Module, Ack_Info),
   form_crypto_frame(Pkt_Type, Data1, Ack_Frame).
 
-form_frames(Pkt_Type, Data0, Ack_Frame) ->
-  case quic_cc:available_packet_size(Data0) of
-    {ok, Size} when Size < 33 ->
-      %% The maximum header size is 33 bytes, so can't send anything except the ack_frame
-      form_packet(Pkt_Type, Data0, Ack_Frame);
-
-    {ok, Size} ->
-      %% Can potentially send more frames.
-      Ack_Size = ack_size(Ack_Frame),
-      case quic_staging:destage(Data0, Size - Ack_Size) of
-        {ok, _, []} when Ack_Size =:= 0 ->
-          %% Nothing to send at this point so return.
-          {ok, Data0};
-
-        {ok, _, []} ->
-          %% Nothing small enough to add, but there is an ack_frame.
-          form_packet(Pkt_Type, Data0, Ack_Frame);
-
-        {ok, Data1, Frames} ->
-          form_packet(Pkt_Type, Data1, Ack_Frame ++ Frames)
-      end
+form_frames(Pkt_Type, Data0, #{binary := Ack_Bin} = Ack_Frame) ->
+  {ok, Size} = quic_cc:available_packet_size(Data0),
+  %% Can potentially send more frames.
+  Ack_Size = byte_size(Ack_Bin),
+  case quic_staging:destage(Data0, Size - Ack_Size) of
+    {ok, _, []} when Ack_Size =:= 0 ->
+      %% Nothing to send at this point so return.
+      {ok, Data0};
+    
+    {ok, _, []} ->
+      %% Nothing small enough to add, but there is an ack_frame.
+      form_packet(Pkt_Type, Data0, [Ack_Frame]);
+    
+    {ok, Data1, Frames} ->
+      form_packet(Pkt_Type, Data1, [Ack_Frame | Frames])
   end.
 
-ack_size([#{binary := Bin}]) ->
-  byte_size(Bin);
-ack_size([]) ->
-  0.
 
-form_crypto_frame(Pkt_Type, Data0, Ack_Frame) ->
+form_crypto_frame(Pkt_Type, #quic_data{vx_module = Module} = Data0, Ack_Frame) ->
   %% Create the crypto frame binary, wrap it in the crypto frame header, and add it to the
   %% crypto transcript. This could be prettier, but I want the separation of the steps.
   {ok, Crypto_Data} = quic_crypto:form_frame(Pkt_Type, Data0),
-  {ok, Crypto_Frame} = quic_packet:form_frame(crypto, Crypto_Data),
+  %% Add the transcript before the quic frame headers are added.
   {ok, Data1} = quic_crypto:add_transcript(Crypto_Data, Data0),
-  form_packet(Pkt_Type, Data1, Ack_Frame ++ Crypto_Frame).
+  {ok, Crypto_Frame} = quic_packet:form_frame(Module, Crypto_Data),
+  form_packet(Pkt_Type, Data1, [Ack_Frame, Crypto_Frame]).
 
 -spec form_packet(Pkt_Type, Data, Frames) -> Result when
     Pkt_Type :: early_data | short | server_hello | client_hello |
@@ -376,38 +372,41 @@ form_packet(early_data, Data0, Frames) ->
   encrypt_packet(early_data, Data1, Frames, Header, Payload, Pkt_Num);
 
 form_packet(Pkt_Type, Data0, Frames) ->
-  Crypto_Range = case Pkt_Type of
-                   early_data -> 
-                     early_data;
-                   short -> 
-                     short;
-                   Init when Init =:= server_hello;
-                             Init =:= client_hello ->
-                     initial;
-                   _ ->
-                     handshake
-                 end,
+  Header_Type = case Pkt_Type of
+                  Init when Init == server_hello;
+                            Init == client_hello ->
+                    initial;
+                  _ ->
+                    handshake
+                end,
   
-  {ok, Data1, Header, Payload, Pkt_Num} = quic_packet:form_packet(Crypto_Range, Data0, Frames),
-  encrypt_packet(Crypto_Range, Data1, Frames, Header, Payload, Pkt_Num).
+  {ok, Data1, Header, Payload, Pkt_Num} = quic_packet:form_packet(Header_Type, Data0, Frames),
+  encrypt_packet(Header_Type, Data1, Frames, Header, Payload, Pkt_Num).
+
 
 encrypt_packet(Crypto_Range, Data0, Frames, Header, Payload, {Pkt_Num_Int, _Bin} = Pkt_Num) ->
   {ok, Data1, Packet} = quic_crypto:encrypt_packet(Crypto_Range, Data0, 
                                                    Header, Payload, Pkt_Num),
   send_packet(Crypto_Range, Data1, Frames, Packet, Pkt_Num_Int).
 
-send_packet(Range, #quic_data{conn = #quic_conn{socket = Socket,
-                                                address = IP,
-                                                port = Port}
-                             } = Data,
+
+send_packet(Crypto_Range, #quic_data{conn = #quic_conn{socket = Socket,
+                                                       address = IP,
+                                                       port = Port}
+                                    } = Data,
             Frames, Packet, Pkt_Num) ->
   prim_inet:sendto(Socket, IP, Port, Packet),
-  packet_sent(Range, Data, Frames, byte_size(Packet), Pkt_Num).
+  packet_sent(Crypto_Range, Data, Frames, byte_size(Packet), Pkt_Num).
 
 packet_sent(Range, Data, Frames, Packet_Size, Pkt_Num) ->
   %% Range is needed at this point for resending purposes.
-  quic_cc:packet_sent(Range, Data, Frames, Packet_Size, Pkt_Num).
-  
+  Pkt_Range = case Range of
+                early_data -> application;
+                short -> application;
+                _ -> Range
+              end,
+
+  quic_cc:packet_sent(Pkt_Range, Data, Frames, Packet_Size, Pkt_Num).
 
 %% send_and_form_packet(Pkt_Type, #quic_data{
 %%                                   conn = #quic_conn{

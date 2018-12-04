@@ -1,0 +1,642 @@
+Finding suitable PLTs
+Checking PLT...
+[:compiler, :crypto, :elixir, :ets, :hkdf, :kernel, :logger, :public_key, :stdlib]
+PLT is up to date!
+Starting Dialyzer
+[
+  check_plt: false,
+  init_plt: '/home/alex/Documents/Projects/gen_quic/_build/dev/dialyxir_erlang-21.0.4_elixir-1.7.2_deps-dev.plt',
+  files_rec: ['/home/alex/Documents/Projects/gen_quic/_build/dev/lib/gen_quic/ebin'],
+  warnings: [:unknown]
+]
+Total errors: 24, Skipped: 0
+done in 0m4.57s
+:0:unknown_type
+Unknown type: :gen_quic.frame_error/0.
+________________________________________________________________________________
+Please file a bug in https://github.com/jeremyjh/dialyxir/issues with this message.
+
+Failed to parse warning:
+[{:"(", 1}, {:atom_full, 1, '\'avoidance\''}, {:|, 1}, {:atom_full, 1, '\'crypto\''}, {:|, 1}, {:atom_full, 1, '\'early_data\''}, {:|, 1}, {:atom_full, 1, '\'recovery\''}, {:|, 1}, {:atom_full, 1, '\'slow_start\''}, {:",", 1}, {:"#", 1}, {:atom_part, 1, 'q'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'c'}, {:_, 1}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'a'}, {:"{", 1}, {:atom_part, 1, 't'}, {:atom_part, 1, 'y'}, {:atom_part, 1, 'p'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_full, 1, '\'client\''}, {:|, 1}, {:atom_full, 1, '\'server\''}, {:",", 1}, {:atom_part, 1, 'v'}, {:atom_part, 1, 'x'}, {:_, 1}, {:atom_part, 1, 'm'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'm'}, {:"(", 1}, {:")", 1}, {:",", 1}, {:atom_part, ...}, {...}, ...]
+
+
+Legacy warning:
+src/quic_cc.erl:196: Invalid type specification for function quic_cc:handle_acks/4. The success typing is ('avoidance' | 'crypto' | 'early_data' | 'recovery' | 'slow_start',#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [binary()]},conn::'undefined' | #quic_conn{socket::'undefined' | port(),address::'undefined' | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::#{'min_rtt':=_, 'sent_packets':=map(), 'smooth_rtt':=_, 'var_rtt':=_, _=>_},cc_info::'undefined' | map(),send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | #quic_pref_addr{address::'undefined' | {_,_,_,_} | {_,_,_,_,_,_,_,_},port::'undefined' | char(),conn_id::'undefined' | binary(),reset_token::'undefined' | binary()}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{non_neg_integer(),non_neg_integer()},handshake_offsets::{non_neg_integer(),non_neg_integer()},protected_offsets::{non_neg_integer(),non_neg_integer()},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [binary()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {atom(),atom()},signature_alg::'undefined' | {atom(),atom(),atom()}},retry_token::'undefined' | binary()},_,#{'ack_delay':=_, 'acks':=[any()], 'largest_ack':=non_neg_integer(), 'type':='ack_frame', _=>_}) -> {'avoidance',#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [any()]},conn::'undefined' | #quic_conn{socket::'undefined' | port(),address::'undefined' | {_,_,_,_} | {_,_,_,_,_,_,_,_},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::map(),cc_info::'undefined' | map(),send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | {_,_,_,_,_}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{_,_},handshake_offsets::{_,_},protected_offsets::{_,_},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [any()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {_,_},signature_alg::'undefined' | {_,_,_}},retry_token::'undefined' | binary()}} | {'crypto',#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [any()]},conn::'undefined' | #quic_conn{socket::'undefined' | port(),address::'undefined' | {_,_,_,_} | {_,_,_,_,_,_,_,_},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::map(),cc_info::'undefined' | map(),send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | {_,_,_,_,_}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{_,_},handshake_offsets::{_,_},protected_offsets::{_,_},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [any()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {_,_},signature_alg::'undefined' | {_,_,_}},retry_token::'undefined' | binary()}} | {'early_data',#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [any()]},conn::'undefined' | #quic_conn{socket::'undefined' | port(),address::'undefined' | {_,_,_,_} | {_,_,_,_,_,_,_,_},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::map(),cc_info::'undefined' | map(),send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | {_,_,_,_,_}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{_,_},handshake_offsets::{_,_},protected_offsets::{_,_},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [any()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {_,_},signature_alg::'undefined' | {_,_,_}},retry_token::'undefined' | binary()}} | {'slow_start',#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [any()]},conn::'undefined' | #quic_conn{socket::'undefined' | port(),address::'undefined' | {_,_,_,_} | {_,_,_,_,_,_,_,_},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::map(),cc_info::'undefined' | map(),send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | {_,_,_,_,_}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{_,_},handshake_offsets::{_,_},protected_offsets::{_,_},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [any()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {_,_},signature_alg::'undefined' | {_,_,_}},retry_token::'undefined' | binary()}} | {'recovery',#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [any()]},conn::'undefined' | #quic_conn{socket::'undefined' | port(),address::'undefined' | {_,_,_,_} | {_,_,_,_,_,_,_,_},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::map(),cc_info::#{'ecn_ce_counter':=_, _=>_},send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | {_,_,_,_,_}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{_,_},handshake_offsets::{_,_},protected_offsets::{_,_},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [any()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {_,_},signature_alg::'undefined' | {_,_,_}},retry_token::'undefined' | binary()},{'ecn_event',non_neg_integer()}}
+________________________________________________________________________________
+src/quic_conn.erl:321:call_to_missing
+Call to missing or private function :quic_cc.get_ack_info/2.
+________________________________________________________________________________
+src/quic_conn.erl:322:call_to_missing
+Call to missing or private function :quic_packet.create_ack_frame/1.
+________________________________________________________________________________
+src/quic_conn.erl:353:no_return
+Function form_crypto_frame/3 has no local return.
+________________________________________________________________________________
+Please file a bug in https://github.com/jeremyjh/dialyxir/issues with this message.
+
+Failed to parse warning:
+[{:"(", 1}, {:atom_part, 1, 'V'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 's'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'n'}, {:",", 1}, {:atom_part, 1, 'F'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'm'}, {:atom_part, 1, 'e'}, {:_, 1}, {:atom_part, 1, 'I'}, {:atom_part, 1, 'n'}, {:atom_part, 1, 'f'}, {:atom_part, 1, 'o'}, {:")", 1}, {:->, 1}, {:atom_part, 1, 'R'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 's'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'w'}, {:atom_part, 1, 'h'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'n'}, {:atom_part, 1, 'V'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 's'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'n'}, {:::, 1}, {:atom_part, 1, 'b'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'n'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 'y'}, {:"(", 1}, {:")", 1}, {:",", 1}, {:atom_part, ...}, {...}, ...]
+
+
+Legacy warning:
+src/quic_conn.erl:357: The call quic_packet:form_frame('crypto',Crypto_Data::{'cert_verify' | 'certificate' | 'client_hello' | 'encrypted_exts' | 'finished' | 'server_hello',non_neg_integer(),<<_:48,_:_*8>>}) will never return since the success typing is (binary(),any()) -> any() and the contract is (Version,Frame_Info) -> Result when Version :: binary(), Frame_Info :: quic_frame(), Result :: {'ok',quic_frame()} | {'error',Reason}, Reason :: gen_quic:frame_error()
+________________________________________________________________________________
+src/quic_conn.erl:370:no_return
+Function form_packet/3 has no local return.
+________________________________________________________________________________
+Please file a bug in https://github.com/jeremyjh/dialyxir/issues with this message.
+
+Failed to parse warning:
+[{:"(", 1}, {:atom_full, 1, '\'short\''}, {:",", 1}, {:atom_part, 1, 'D'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'a'}, {:int, 1, 1}, {:::, 1}, {:"#", 1}, {:atom_part, 1, 'q'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'c'}, {:_, 1}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'a'}, {:"{", 1}, {:atom_part, 1, 't'}, {:atom_part, 1, 'y'}, {:atom_part, 1, 'p'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_full, 1, '\'client\''}, {:|, 1}, {:atom_full, 1, '\'server\''}, {:",", 1}, {:atom_part, 1, 'v'}, {:atom_part, 1, 'x'}, {:_, 1}, {:atom_part, 1, 'm'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'm'}, {:"(", 1}, {:")", 1}, {:",", 1}, {:atom_part, 1, 'v'}, {:atom_part, 1, ...}, {:atom_part, ...}, {...}, ...]
+
+
+Legacy warning:
+src/quic_conn.erl:372: The call quic_conn:encrypt_packet('short',Data1::#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [binary()]},conn::'undefined' | #quic_conn{socket::'undefined' | port(),address::'undefined' | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::'undefined' | map(),cc_info::'undefined' | map(),send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | #quic_pref_addr{address::'undefined' | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},port::'undefined' | char(),conn_id::'undefined' | binary(),reset_token::'undefined' | binary()}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{non_neg_integer(),non_neg_integer()},handshake_offsets::{non_neg_integer(),non_neg_integer()},protected_offsets::{non_neg_integer(),non_neg_integer()},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [binary()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {atom(),atom()},signature_alg::'undefined' | {atom(),atom(),atom()}},retry_token::'undefined' | binary()},Frames::[#{'ack_delay'=>non_neg_integer(), 'acks'=>[non_neg_integer()], 'binary'=>binary(), 'challenge'=>binary(), 'conn_id'=>binary(), 'data'=>binary(), 'error_code'=>binary() | non_neg_integer(), 'error_message'=>binary(), 'length'=>non_neg_integer(), 'max_data'=>non_neg_integer(), 'max_stream_data'=>non_neg_integer(), 'max_stream_id'=>non_neg_integer(), 'offset'=>non_neg_integer(), 'retransmit'=>'true', 'sequence'=>integer(), 'stream_id'=>non_neg_integer(), 'stream_owner'=>0 | 1, 'stream_type'=>0 | 1, 'token'=>binary(), 'type'=>atom()}],Header::binary(),Payload::binary(),Pkt_Num::{non_neg_integer(),binary()}) will never return since it differs in the 1st argument from the success typing arguments: ('handshake' | 'initial',#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [binary()]},conn::'undefined' | #quic_conn{socket::'undefined' | port(),address::'undefined' | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::'undefined' | map(),cc_info::'undefined' | map(),send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | #quic_pref_addr{address::'undefined' | {_,_,_,_} | {_,_,_,_,_,_,_,_},port::'undefined' | char(),conn_id::'undefined' | binary(),reset_token::'undefined' | binary()}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{non_neg_integer(),non_neg_integer()},handshake_offsets::{non_neg_integer(),non_neg_integer()},protected_offsets::{non_neg_integer(),non_neg_integer()},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [binary()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {atom(),atom()},signature_alg::'undefined' | {atom(),atom(),atom()}},retry_token::'undefined' | binary()},'ack_only' | 'handshake' | [#{'ack_delay'=>non_neg_integer(), 'acks'=>[non_neg_integer()], 'binary'=>binary(), 'challenge'=>binary(), 'conn_id'=>binary(), 'data'=>binary(), 'error_code'=>binary() | non_neg_integer(), 'error_message'=>binary(), 'length'=>non_neg_integer(), 'max_data'=>non_neg_integer(), 'max_stream_data'=>non_neg_integer(), 'max_stream_id'=>non_neg_integer(), 'offset'=>non_neg_integer(), 'retransmit'=>'true', 'sequence'=>integer(), 'stream_id'=>non_neg_integer(), 'stream_owner'=>0 | 1, 'stream_type'=>0 | 1, 'token'=>binary(), 'type'=>atom()}],binary(),binary(),{non_neg_integer(),binary()})
+________________________________________________________________________________
+Please file a bug in https://github.com/jeremyjh/dialyxir/issues with this message.
+
+Failed to parse warning:
+[{:"(", 1}, {:atom_full, 1, '\'early_data\''}, {:",", 1}, {:atom_part, 1, 'D'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'a'}, {:int, 1, 1}, {:::, 1}, {:"#", 1}, {:atom_part, 1, 'q'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'c'}, {:_, 1}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'a'}, {:"{", 1}, {:atom_part, 1, 't'}, {:atom_part, 1, 'y'}, {:atom_part, 1, 'p'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_full, 1, '\'client\''}, {:|, 1}, {:atom_full, 1, '\'server\''}, {:",", 1}, {:atom_part, 1, 'v'}, {:atom_part, 1, 'x'}, {:_, 1}, {:atom_part, 1, 'm'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'm'}, {:"(", 1}, {:")", 1}, {:",", 1}, {:atom_part, 1, 'v'}, {:atom_part, 1, ...}, {:atom_part, ...}, {...}, ...]
+
+
+Legacy warning:
+src/quic_conn.erl:376: The call quic_conn:encrypt_packet('early_data',Data1::#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [binary()]},conn::'undefined' | #quic_conn{socket::'undefined' | port(),address::'undefined' | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::'undefined' | map(),cc_info::'undefined' | map(),send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | #quic_pref_addr{address::'undefined' | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},port::'undefined' | char(),conn_id::'undefined' | binary(),reset_token::'undefined' | binary()}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{non_neg_integer(),non_neg_integer()},handshake_offsets::{non_neg_integer(),non_neg_integer()},protected_offsets::{non_neg_integer(),non_neg_integer()},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [binary()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {atom(),atom()},signature_alg::'undefined' | {atom(),atom(),atom()}},retry_token::'undefined' | binary()},Frames::[#{'ack_delay'=>non_neg_integer(), 'acks'=>[non_neg_integer()], 'binary'=>binary(), 'challenge'=>binary(), 'conn_id'=>binary(), 'data'=>binary(), 'error_code'=>binary() | non_neg_integer(), 'error_message'=>binary(), 'length'=>non_neg_integer(), 'max_data'=>non_neg_integer(), 'max_stream_data'=>non_neg_integer(), 'max_stream_id'=>non_neg_integer(), 'offset'=>non_neg_integer(), 'retransmit'=>'true', 'sequence'=>integer(), 'stream_id'=>non_neg_integer(), 'stream_owner'=>0 | 1, 'stream_type'=>0 | 1, 'token'=>binary(), 'type'=>atom()}],Header::binary(),Payload::binary(),Pkt_Num::{non_neg_integer(),binary()}) will never return since it differs in the 1st argument from the success typing arguments: ('handshake' | 'initial',#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [binary()]},conn::'undefined' | #quic_conn{socket::'undefined' | port(),address::'undefined' | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::'undefined' | map(),cc_info::'undefined' | map(),send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | #quic_pref_addr{address::'undefined' | {_,_,_,_} | {_,_,_,_,_,_,_,_},port::'undefined' | char(),conn_id::'undefined' | binary(),reset_token::'undefined' | binary()}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{non_neg_integer(),non_neg_integer()},handshake_offsets::{non_neg_integer(),non_neg_integer()},protected_offsets::{non_neg_integer(),non_neg_integer()},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [binary()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {atom(),atom()},signature_alg::'undefined' | {atom(),atom(),atom()}},retry_token::'undefined' | binary()},'ack_only' | 'handshake' | [#{'ack_delay'=>non_neg_integer(), 'acks'=>[non_neg_integer()], 'binary'=>binary(), 'challenge'=>binary(), 'conn_id'=>binary(), 'data'=>binary(), 'error_code'=>binary() | non_neg_integer(), 'error_message'=>binary(), 'length'=>non_neg_integer(), 'max_data'=>non_neg_integer(), 'max_stream_data'=>non_neg_integer(), 'max_stream_id'=>non_neg_integer(), 'offset'=>non_neg_integer(), 'retransmit'=>'true', 'sequence'=>integer(), 'stream_id'=>non_neg_integer(), 'stream_owner'=>0 | 1, 'stream_type'=>0 | 1, 'token'=>binary(), 'type'=>atom()}],binary(),binary(),{non_neg_integer(),binary()})
+________________________________________________________________________________
+Please file a bug in https://github.com/jeremyjh/dialyxir/issues with this message.
+
+Failed to parse warning:
+[{:<, 1}, {:atom_full, 1, '\'early_data\''}, {:|, 1}, {:atom_full, 1, '\'short\''}, {:",", 1}, {:"#", 1}, {:atom_part, 1, 'q'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'c'}, {:_, 1}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'a'}, {:"{", 1}, {:atom_part, 1, 't'}, {:atom_part, 1, 'y'}, {:atom_part, 1, 'p'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_full, 1, '\'client\''}, {:|, 1}, {:atom_full, 1, '\'server\''}, {:",", 1}, {:atom_part, 1, 'v'}, {:atom_part, 1, 'x'}, {:_, 1}, {:atom_part, 1, 'm'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'm'}, {:"(", 1}, {:")", 1}, {:",", 1}, {:atom_part, 1, 'v'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 's'}, {:atom_part, 1, 'i'}, {:atom_part, 1, ...}, {:atom_part, ...}, {...}, ...]
+
+
+Legacy warning:
+src/quic_conn.erl:378: The pattern <Pkt_Type, Data0, Frames> can never match since previous clauses completely covered the type <'early_data' | 'short',#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [any()]},conn::'undefined' | #quic_conn{socket::'undefined' | port(),address::'undefined' | {_,_,_,_} | {_,_,_,_,_,_,_,_},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::'undefined' | map(),cc_info::'undefined' | map(),send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | {_,_,_,_,_}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{_,_},handshake_offsets::{_,_},protected_offsets::{_,_},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [any()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {_,_},signature_alg::'undefined' | {_,_,_}},retry_token::'undefined' | binary()},_>
+________________________________________________________________________________
+src/quic_conn.erl:394:no_return
+Function encrypt_packet/6 has no local return.
+________________________________________________________________________________
+Please file a bug in https://github.com/jeremyjh/dialyxir/issues with this message.
+
+Failed to parse warning:
+[{:"(", 1}, {:atom_part, 1, 'C'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 'y'}, {:atom_part, 1, 'p'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'o'}, {:_, 1}, {:atom_part, 1, 'R'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'n'}, {:atom_part, 1, 'g'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_full, 1, '\'early_data\''}, {:|, 1}, {:atom_full, 1, '\'short\''}, {:",", 1}, {:atom_part, 1, 'D'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'a'}, {:int, 1, 1}, {:::, 1}, {:"#", 1}, {:atom_part, 1, 'q'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'c'}, {:_, 1}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'a'}, {:"{", 1}, {:atom_part, 1, 't'}, {:atom_part, 1, 'y'}, {:atom_part, 1, 'p'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_full, 1, '\'client\''}, {:|, 1}, {:atom_full, 1, '\'server\''}, {:",", 1}, {:atom_part, 1, 'v'}, {:atom_part, 1, 'x'}, {:_, 1}, {:atom_part, 1, ...}, {:atom_part, ...}, {...}, ...]
+
+
+Legacy warning:
+src/quic_conn.erl:397: The call quic_conn:send_packet(Crypto_Range::'early_data' | 'short',Data1::#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [binary()]},conn::'undefined' | #quic_conn{socket::'undefined' | port(),address::'undefined' | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::'undefined' | map(),cc_info::'undefined' | map(),send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | #quic_pref_addr{address::'undefined' | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},port::'undefined' | char(),conn_id::'undefined' | binary(),reset_token::'undefined' | binary()}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{non_neg_integer(),non_neg_integer()},handshake_offsets::{non_neg_integer(),non_neg_integer()},protected_offsets::{non_neg_integer(),non_neg_integer()},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [binary()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {atom(),atom()},signature_alg::'undefined' | {atom(),atom(),atom()}},retry_token::'undefined' | binary()},Frames::[#{'ack_delay'=>non_neg_integer(), 'acks'=>[any()], 'binary'=>binary(), 'challenge'=>binary(), 'conn_id'=>binary(), 'data'=>binary(), 'error_code'=>binary() | non_neg_integer(), 'error_message'=>binary(), 'length'=>non_neg_integer(), 'max_data'=>non_neg_integer(), 'max_stream_data'=>non_neg_integer(), 'max_stream_id'=>non_neg_integer(), 'offset'=>non_neg_integer(), 'retransmit'=>'true', 'sequence'=>integer(), 'stream_id'=>non_neg_integer(), 'stream_owner'=>0 | 1, 'stream_type'=>0 | 1, 'token'=>binary(), 'type'=>atom()}],Packet::binary(),Pkt_Num_Int::non_neg_integer()) will never return since it differs in the 1st argument from the success typing arguments: ('application' | 'handshake' | 'initial',#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [binary()]},conn::#quic_conn{socket::port(),address::'undefined' | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::#{'largest_sent':=_, 'loss_time':=_, 'sent_packets':=map(), 'time_last_sent_retransmit':=_, 'timer':=reference(), _=>_},cc_info::#{'bytes_in_flight':=number(), _=>_},send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | #quic_pref_addr{address::'undefined' | {_,_,_,_} | {_,_,_,_,_,_,_,_},port::'undefined' | char(),conn_id::'undefined' | binary(),reset_token::'undefined' | binary()}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{non_neg_integer(),non_neg_integer()},handshake_offsets::{non_neg_integer(),non_neg_integer()},protected_offsets::{non_neg_integer(),non_neg_integer()},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [binary()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {atom(),atom()},signature_alg::'undefined' | {atom(),atom(),atom()}},retry_token::'undefined' | binary()},'ack_only' | 'handshake' | [#{'ack_delay'=>non_neg_integer(), 'acks'=>[non_neg_integer()], 'binary'=>binary(), 'challenge'=>binary(), 'conn_id'=>binary(), 'data'=>binary(), 'error_code'=>binary() | non_neg_integer(), 'error_message'=>binary(), 'length'=>non_neg_integer(), 'max_data'=>non_neg_integer(), 'max_stream_data'=>non_neg_integer(), 'max_stream_id'=>non_neg_integer(), 'offset'=>non_neg_integer(), 'retransmit'=>'true', 'sequence'=>integer(), 'stream_id'=>non_neg_integer(), 'stream_owner'=>0 | 1, 'stream_type'=>0 | 1, 'token'=>binary(), 'type'=>atom()}],bitstring(),non_neg_integer())
+________________________________________________________________________________
+src/quic_conn.erl:399:no_return
+Function send_packet/5 has no local return.
+________________________________________________________________________________
+Please file a bug in https://github.com/jeremyjh/dialyxir/issues with this message.
+
+Failed to parse warning:
+[{:"(", 1}, {:atom_part, 1, 'R'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'n'}, {:atom_part, 1, 'g'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_full, 1, '\'early_data\''}, {:|, 1}, {:atom_full, 1, '\'short\''}, {:",", 1}, {:atom_part, 1, 'D'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'a'}, {:::, 1}, {:"#", 1}, {:atom_part, 1, 'q'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'c'}, {:_, 1}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'a'}, {:"{", 1}, {:atom_part, 1, 't'}, {:atom_part, 1, 'y'}, {:atom_part, 1, 'p'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_full, 1, '\'client\''}, {:|, 1}, {:atom_full, 1, '\'server\''}, {:",", 1}, {:atom_part, 1, 'v'}, {:atom_part, 1, 'x'}, {:_, 1}, {:atom_part, 1, 'm'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_part, 1, 'a'}, {:atom_part, 1, ...}, {:atom_part, ...}, {...}, ...]
+
+
+Legacy warning:
+src/quic_conn.erl:405: The call quic_conn:packet_sent(Range::'early_data' | 'short',Data::#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [binary()]},conn::#quic_conn{socket::'undefined' | port(),address::'undefined' | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::'undefined' | map(),cc_info::'undefined' | map(),send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | #quic_pref_addr{address::'undefined' | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},port::'undefined' | char(),conn_id::'undefined' | binary(),reset_token::'undefined' | binary()}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{non_neg_integer(),non_neg_integer()},handshake_offsets::{non_neg_integer(),non_neg_integer()},protected_offsets::{non_neg_integer(),non_neg_integer()},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [binary()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {atom(),atom()},signature_alg::'undefined' | {atom(),atom(),atom()}},retry_token::'undefined' | binary()},Frames::[#{'ack_delay'=>non_neg_integer(), 'acks'=>[any()], 'binary'=>binary(), 'challenge'=>binary(), 'conn_id'=>binary(), 'data'=>binary(), 'error_code'=>binary() | non_neg_integer(), 'error_message'=>binary(), 'length'=>non_neg_integer(), 'max_data'=>non_neg_integer(), 'max_stream_data'=>non_neg_integer(), 'max_stream_id'=>non_neg_integer(), 'offset'=>non_neg_integer(), 'retransmit'=>'true', 'sequence'=>integer(), 'stream_id'=>non_neg_integer(), 'stream_owner'=>0 | 1, 'stream_type'=>0 | 1, 'token'=>binary(), 'type'=>atom()}],non_neg_integer(),Pkt_Num::non_neg_integer()) will never return since it differs in the 1st argument from the success typing arguments: ('application' | 'handshake' | 'initial',#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [binary()]},conn::'undefined' | #quic_conn{socket::'undefined' | port(),address::'undefined' | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::#{'largest_sent':=_, 'loss_time':=_, 'sent_packets':=map(), 'time_last_sent_retransmit':=_, 'timer':=reference(), _=>_},cc_info::#{'bytes_in_flight':=number(), _=>_},send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | #quic_pref_addr{address::'undefined' | {_,_,_,_} | {_,_,_,_,_,_,_,_},port::'undefined' | char(),conn_id::'undefined' | binary(),reset_token::'undefined' | binary()}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{non_neg_integer(),non_neg_integer()},handshake_offsets::{non_neg_integer(),non_neg_integer()},protected_offsets::{non_neg_integer(),non_neg_integer()},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [binary()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {atom(),atom()},signature_alg::'undefined' | {atom(),atom(),atom()}},retry_token::'undefined' | binary()},'ack_only' | 'handshake' | [#{'ack_delay'=>non_neg_integer(), 'acks'=>[non_neg_integer()], 'binary'=>binary(), 'challenge'=>binary(), 'conn_id'=>binary(), 'data'=>binary(), 'error_code'=>binary() | non_neg_integer(), 'error_message'=>binary(), 'length'=>non_neg_integer(), 'max_data'=>non_neg_integer(), 'max_stream_data'=>non_neg_integer(), 'max_stream_id'=>non_neg_integer(), 'offset'=>non_neg_integer(), 'retransmit'=>'true', 'sequence'=>integer(), 'stream_id'=>non_neg_integer(), 'stream_owner'=>0 | 1, 'stream_type'=>0 | 1, 'token'=>binary(), 'type'=>atom()}],non_neg_integer(),non_neg_integer())
+________________________________________________________________________________
+src/quic_conn.erl:407:no_return
+Function packet_sent/5 has no local return.
+________________________________________________________________________________
+Please file a bug in https://github.com/jeremyjh/dialyxir/issues with this message.
+
+Failed to parse warning:
+[{:"(", 1}, {:atom_part, 1, 'R'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'n'}, {:atom_part, 1, 'g'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_full, 1, '\'early_data\''}, {:|, 1}, {:atom_full, 1, '\'short\''}, {:",", 1}, {:atom_part, 1, 'D'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'a'}, {:::, 1}, {:"#", 1}, {:atom_part, 1, 'q'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'c'}, {:_, 1}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'a'}, {:"{", 1}, {:atom_part, 1, 't'}, {:atom_part, 1, 'y'}, {:atom_part, 1, 'p'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_full, 1, '\'client\''}, {:|, 1}, {:atom_full, 1, '\'server\''}, {:",", 1}, {:atom_part, 1, 'v'}, {:atom_part, 1, 'x'}, {:_, 1}, {:atom_part, 1, 'm'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_part, 1, 'a'}, {:atom_part, 1, ...}, {:atom_part, ...}, {...}, ...]
+
+
+Legacy warning:
+src/quic_conn.erl:409: The call quic_cc:packet_sent(Range::'early_data' | 'short',Data::#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [any()]},conn::#quic_conn{socket::'undefined' | port(),address::'undefined' | {_,_,_,_} | {_,_,_,_,_,_,_,_},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::'undefined' | map(),cc_info::'undefined' | map(),send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | {_,_,_,_,_}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{_,_},handshake_offsets::{_,_},protected_offsets::{_,_},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [any()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {_,_},signature_alg::'undefined' | {_,_,_}},retry_token::'undefined' | binary()},Frames::[#{'ack_delay'=>non_neg_integer(), 'acks'=>[any()], 'binary'=>binary(), 'challenge'=>binary(), 'conn_id'=>binary(), 'data'=>binary(), 'error_code'=>binary() | non_neg_integer(), 'error_message'=>binary(), 'length'=>non_neg_integer(), 'max_data'=>non_neg_integer(), 'max_stream_data'=>non_neg_integer(), 'max_stream_id'=>non_neg_integer(), 'offset'=>non_neg_integer(), 'retransmit'=>'true', 'sequence'=>integer(), 'stream_id'=>non_neg_integer(), 'stream_owner'=>0 | 1, 'stream_type'=>0 | 1, 'token'=>binary(), 'type'=>atom()}],Packet_Size::non_neg_integer(),Pkt_Num::non_neg_integer()) breaks the contract (Range,Data,Frames,Size,Pkt_Num) -> Result when Range :: 'application' | 'handshake' | 'initial', Data :: #quic_data{}, Frames :: [Frame] | 'ack_only' | 'handshake', Frame :: quic_frame(), Size :: non_neg_integer(), Pkt_Num :: non_neg_integer(), Result :: {'ok',Data}
+________________________________________________________________________________
+src/quic_conn.erl:579:pattern_match
+The pattern
+:invalid
+
+can never match the type
+:ok
+________________________________________________________________________________
+src/quic_parser_vx_1.erl:440:call
+The call:
+:quic_parser_vx_1.construct_ack_frame(
+  Pkt_Info :: any(),
+  Stack :: [
+    atom()
+    | bitstring()
+    | non_neg_integer()
+    | {:error,
+       :badarg
+       | :final_offset
+       | :flow_control
+       | :frame_error
+       | :frame_format
+       | :internal
+       | :path_response
+       | :protocol_violation
+       | :server_busy
+       | :stream_id
+       | :stream_state
+       | :transport_param
+       | :version_neg_error}
+    | {:stream_close, 0 | 1, 0 | 1}
+    | {:stream_data, 0 | 1, 0 | 1}
+  ],
+  Frames :: [
+    %{
+      :type => atom(),
+      :challenge => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :conn_id => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :data => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :error_code => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :error_message => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :max_data => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :max_stream_data => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :max_stream_id => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :offset => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :sequence => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :stream_id => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :stream_owner => 0 | 1,
+      :stream_type => 0 | 1,
+      :token => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _}
+    }
+  ],
+  Ack_Frames :: [],
+  TLS_Info :: :none,
+  [
+    atom()
+    | bitstring()
+    | non_neg_integer()
+    | {:error,
+       :badarg
+       | :final_offset
+       | :flow_control
+       | :frame_error
+       | :frame_format
+       | :internal
+       | :path_response
+       | :protocol_violation
+       | :server_busy
+       | :stream_id
+       | :stream_state
+       | :transport_param
+       | :version_neg_error}
+    | {:stream_close, 0 | 1, 0 | 1}
+    | {:stream_data, 0 | 1, 0 | 1},
+    ...
+  ],
+  Ack_Frame :: %{
+    :ack_delay =>
+      atom()
+      | bitstring()
+      | non_neg_integer()
+      | {:error,
+         :badarg
+         | :final_offset
+         | :flow_control
+         | :frame_error
+         | :frame_format
+         | :internal
+         | :path_response
+         | :protocol_violation
+         | :server_busy
+         | :stream_id
+         | :stream_state
+         | :transport_param
+         | :version_neg_error}
+      | {:stream_close, 0 | 1, 0 | 1}
+      | {:stream_data, 0 | 1, 0 | 1},
+    :block_count =>
+      atom()
+      | bitstring()
+      | non_neg_integer()
+      | {:error,
+         :badarg
+         | :final_offset
+         | :flow_control
+         | :frame_error
+         | :frame_format
+         | :internal
+         | :path_response
+         | :protocol_violation
+         | :server_busy
+         | :stream_id
+         | :stream_state
+         | :transport_param
+         | :version_neg_error}
+      | {:stream_close, 0 | 1, 0 | 1}
+      | {:stream_data, 0 | 1, 0 | 1},
+    :largest_ack =>
+      atom()
+      | bitstring()
+      | non_neg_integer()
+      | {:error,
+         :badarg
+         | :final_offset
+         | :flow_control
+         | :frame_error
+         | :frame_format
+         | :internal
+         | :path_response
+         | :protocol_violation
+         | :server_busy
+         | :stream_id
+         | :stream_state
+         | :transport_param
+         | :version_neg_error}
+      | {:stream_close, 0 | 1, 0 | 1}
+      | {:stream_data, 0 | 1, 0 | 1},
+    :smallest_ack =>
+      atom()
+      | bitstring()
+      | non_neg_integer()
+      | {:error,
+         :badarg
+         | :final_offset
+         | :flow_control
+         | :frame_error
+         | :frame_format
+         | :internal
+         | :path_response
+         | :protocol_violation
+         | :server_busy
+         | :stream_id
+         | :stream_state
+         | :transport_param
+         | :version_neg_error}
+      | {:stream_close, 0 | 1, 0 | 1}
+      | {:stream_data, 0 | 1, 0 | 1},
+    :type => :ack_frame
+  }
+)
+
+will never return since it differs in arguments with
+positions 7 from the success typing arguments:
+
+(any(), maybe_improper_list(), any(), any(), any(), [integer(), ...], %{
+  :acks => _,
+  :gaps => _,
+  :largest_ack => _,
+  :smallest_ack => integer(),
+  _ => _
+})
+________________________________________________________________________________
+src/quic_parser_vx_1.erl:449:no_return
+Function construct_ack_frame/7 has no local return.
+________________________________________________________________________________
+src/quic_parser_vx_1.erl:449:pattern_match
+The pattern
+
+  :Pkt_Info,
+  :Stack,
+  :Frames,
+  :Ack_Frames,
+  :TLS_Info,
+  [:Ack],
+  Frame0 = %{:smallest_ack => :Largest, :acks => :Ack_List}
+
+
+can never match the type
+
+  _,
+  [
+    atom()
+    | bitstring()
+    | non_neg_integer()
+    | {:error,
+       :badarg
+       | :final_offset
+       | :flow_control
+       | :frame_error
+       | :frame_format
+       | :internal
+       | :path_response
+       | :protocol_violation
+       | :server_busy
+       | :stream_id
+       | :stream_state
+       | :transport_param
+       | :version_neg_error}
+    | {:stream_close, 0 | 1, 0 | 1}
+    | {:stream_data, 0 | 1, 0 | 1}
+  ],
+  [
+    %{
+      :type => atom(),
+      :challenge => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :conn_id => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :data => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :error_code => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :error_message => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :max_data => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :max_stream_data => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :max_stream_id => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :offset => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :sequence => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :stream_id => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :stream_owner => 0 | 1,
+      :stream_type => 0 | 1,
+      :token => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _}
+    }
+  ],
+  [],
+  :none,
+  [
+    atom()
+    | bitstring()
+    | non_neg_integer()
+    | {:error,
+       :badarg
+       | :final_offset
+       | :flow_control
+       | :frame_error
+       | :frame_format
+       | :internal
+       | :path_response
+       | :protocol_violation
+       | :server_busy
+       | :stream_id
+       | :stream_state
+       | :transport_param
+       | :version_neg_error}
+    | {:stream_close, 0 | 1, 0 | 1}
+    | {:stream_data, 0 | 1, 0 | 1},
+    ...
+  ],
+  %{
+    :ack_delay =>
+      atom()
+      | bitstring()
+      | non_neg_integer()
+      | {:error,
+         :badarg
+         | :final_offset
+         | :flow_control
+         | :frame_error
+         | :frame_format
+         | :internal
+         | :path_response
+         | :protocol_violation
+         | :server_busy
+         | :stream_id
+         | :stream_state
+         | :transport_param
+         | :version_neg_error}
+      | {:stream_close, 0 | 1, 0 | 1}
+      | {:stream_data, 0 | 1, 0 | 1},
+    :block_count =>
+      atom()
+      | bitstring()
+      | non_neg_integer()
+      | {:error,
+         :badarg
+         | :final_offset
+         | :flow_control
+         | :frame_error
+         | :frame_format
+         | :internal
+         | :path_response
+         | :protocol_violation
+         | :server_busy
+         | :stream_id
+         | :stream_state
+         | :transport_param
+         | :version_neg_error}
+      | {:stream_close, 0 | 1, 0 | 1}
+      | {:stream_data, 0 | 1, 0 | 1},
+    :largest_ack =>
+      atom()
+      | bitstring()
+      | non_neg_integer()
+      | {:error,
+         :badarg
+         | :final_offset
+         | :flow_control
+         | :frame_error
+         | :frame_format
+         | :internal
+         | :path_response
+         | :protocol_violation
+         | :server_busy
+         | :stream_id
+         | :stream_state
+         | :transport_param
+         | :version_neg_error}
+      | {:stream_close, 0 | 1, 0 | 1}
+      | {:stream_data, 0 | 1, 0 | 1},
+    :smallest_ack =>
+      atom()
+      | bitstring()
+      | non_neg_integer()
+      | {:error,
+         :badarg
+         | :final_offset
+         | :flow_control
+         | :frame_error
+         | :frame_format
+         | :internal
+         | :path_response
+         | :protocol_violation
+         | :server_busy
+         | :stream_id
+         | :stream_state
+         | :transport_param
+         | :version_neg_error}
+      | {:stream_close, 0 | 1, 0 | 1}
+      | {:stream_data, 0 | 1, 0 | 1},
+    :type => :ack_frame
+  }
+________________________________________________________________________________
+src/quic_parser_vx_1.erl:472:pattern_match
+The pattern
+
+  :Pkt_Info,
+  :Stack,
+  :Frames,
+  :Ack_Frames,
+  :TLS_Info,
+  [:Ack, :Gap | :Rest],
+  Frame0 = %{
+    :smallest_ack => :Smallest,
+    :largest_ack => :Largest,
+    :gaps => :Gap_List,
+    :acks => :Ack_List
+  }
+
+
+can never match the type
+
+  _,
+  [
+    atom()
+    | bitstring()
+    | non_neg_integer()
+    | {:error,
+       :badarg
+       | :final_offset
+       | :flow_control
+       | :frame_error
+       | :frame_format
+       | :internal
+       | :path_response
+       | :protocol_violation
+       | :server_busy
+       | :stream_id
+       | :stream_state
+       | :transport_param
+       | :version_neg_error}
+    | {:stream_close, 0 | 1, 0 | 1}
+    | {:stream_data, 0 | 1, 0 | 1}
+  ],
+  [
+    %{
+      :type => atom(),
+      :challenge => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :conn_id => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :data => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :error_code => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :error_message => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :max_data => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :max_stream_data => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :max_stream_id => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :offset => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :sequence => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :stream_id => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _},
+      :stream_owner => 0 | 1,
+      :stream_type => 0 | 1,
+      :token => atom() | bitstring() | non_neg_integer() | {_, _} | {_, _, _}
+    }
+  ],
+  [],
+  :none,
+  [
+    atom()
+    | bitstring()
+    | non_neg_integer()
+    | {:error,
+       :badarg
+       | :final_offset
+       | :flow_control
+       | :frame_error
+       | :frame_format
+       | :internal
+       | :path_response
+       | :protocol_violation
+       | :server_busy
+       | :stream_id
+       | :stream_state
+       | :transport_param
+       | :version_neg_error}
+    | {:stream_close, 0 | 1, 0 | 1}
+    | {:stream_data, 0 | 1, 0 | 1},
+    ...
+  ],
+  %{
+    :ack_delay =>
+      atom()
+      | bitstring()
+      | non_neg_integer()
+      | {:error,
+         :badarg
+         | :final_offset
+         | :flow_control
+         | :frame_error
+         | :frame_format
+         | :internal
+         | :path_response
+         | :protocol_violation
+         | :server_busy
+         | :stream_id
+         | :stream_state
+         | :transport_param
+         | :version_neg_error}
+      | {:stream_close, 0 | 1, 0 | 1}
+      | {:stream_data, 0 | 1, 0 | 1},
+    :block_count =>
+      atom()
+      | bitstring()
+      | non_neg_integer()
+      | {:error,
+         :badarg
+         | :final_offset
+         | :flow_control
+         | :frame_error
+         | :frame_format
+         | :internal
+         | :path_response
+         | :protocol_violation
+         | :server_busy
+         | :stream_id
+         | :stream_state
+         | :transport_param
+         | :version_neg_error}
+      | {:stream_close, 0 | 1, 0 | 1}
+      | {:stream_data, 0 | 1, 0 | 1},
+    :largest_ack =>
+      atom()
+      | bitstring()
+      | non_neg_integer()
+      | {:error,
+         :badarg
+         | :final_offset
+         | :flow_control
+         | :frame_error
+         | :frame_format
+         | :internal
+         | :path_response
+         | :protocol_violation
+         | :server_busy
+         | :stream_id
+         | :stream_state
+         | :transport_param
+         | :version_neg_error}
+      | {:stream_close, 0 | 1, 0 | 1}
+      | {:stream_data, 0 | 1, 0 | 1},
+    :smallest_ack =>
+      atom()
+      | bitstring()
+      | non_neg_integer()
+      | {:error,
+         :badarg
+         | :final_offset
+         | :flow_control
+         | :frame_error
+         | :frame_format
+         | :internal
+         | :path_response
+         | :protocol_violation
+         | :server_busy
+         | :stream_id
+         | :stream_state
+         | :transport_param
+         | :version_neg_error}
+      | {:stream_close, 0 | 1, 0 | 1}
+      | {:stream_data, 0 | 1, 0 | 1},
+    :type => :ack_frame
+  }
+________________________________________________________________________________
+Please file a bug in https://github.com/jeremyjh/dialyxir/issues with this message.
+
+Failed to parse warning:
+[{:"(", 1}, {:atom_full, 1, '\'early_data\''}, {:|, 1}, {:atom_full, 1, '\'short\''}, {:",", 1}, {:"#", 1}, {:atom_part, 1, 'q'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'c'}, {:_, 1}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'a'}, {:"{", 1}, {:atom_part, 1, 't'}, {:atom_part, 1, 'y'}, {:atom_part, 1, 'p'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_full, 1, '\'client\''}, {:|, 1}, {:atom_full, 1, '\'server\''}, {:",", 1}, {:atom_part, 1, 'v'}, {:atom_part, 1, 'x'}, {:_, 1}, {:atom_part, 1, 'm'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'd'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 'e'}, {:::, 1}, {:atom_part, 1, 'a'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'm'}, {:"(", 1}, {:")", 1}, {:",", 1}, {:atom_part, 1, 'v'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 's'}, {:atom_part, 1, 'i'}, {:atom_part, 1, ...}, {:atom_part, ...}, {...}, ...]
+
+
+Legacy warning:
+src/quic_statem.erl:83: The call quic_statem:send_and_form_packet('client_hello',Data0::any()) will never return since it differs in the 1st argument from the success typing arguments: ('early_data' | 'short',#quic_data{type::'client' | 'server',vx_module::atom(),version::'undefined' | #quic_version{initial_version::'undefined' | binary(),negotiated_version::'undefined' | binary(),supported_versions::'undefined' | [binary()]},conn::'undefined' | #quic_conn{socket::'undefined' | port(),address::'undefined' | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},port::'undefined' | char(),owner::'undefined' | pid(),dest_conn_ID::'undefined' | binary(),src_conn_ID::'undefined' | binary()},pkt_nums::map(),timer_info::'undefined' | map(),cc_info::'undefined' | map(),send_queue::'undefined' | quic_staging:staging(),priority_num::'undefined' | non_neg_integer(),params::'undefined' | #quic_params{init_max_stream_data::'undefined' | non_neg_integer(),init_max_data::'undefined' | non_neg_integer(),idle_timeout::'undefined' | non_neg_integer(),init_max_bi_streams::'undefined' | non_neg_integer(),init_max_uni_streams::'undefined' | non_neg_integer(),max_packet_size::'undefined' | non_neg_integer(),ack_delay_exp::non_neg_integer(),migration::'false' | 'true' | 'undefined',reset_token::'undefined' | binary(),preferred_address::'undefined' | #quic_pref_addr{address::'undefined' | {_,_,_,_} | {_,_,_,_,_,_,_,_},port::'undefined' | char(),conn_id::'undefined' | binary(),reset_token::'undefined' | binary()}},current_data::'undefined' | non_neg_integer(),crypto::#quic_crypto{state::atom(),init_offsets::{non_neg_integer(),non_neg_integer()},handshake_offsets::{non_neg_integer(),non_neg_integer()},protected_offsets::{non_neg_integer(),non_neg_integer()},init_secret::'undefined' | binary(),pkt_num_init_secret::'undefined' | binary(),client_init_secret::'undefined' | binary(),server_init_secret::'undefined' | binary(),client_init_key::'undefined' | binary(),client_init_iv::'undefined' | binary(),server_init_key::'undefined' | binary(),server_init_iv::'undefined' | binary(),handshake_secret::'undefined' | binary(),client_early_key::'undefined' | binary(),client_early_iv::'undefined' | binary(),pkt_num_handshake_secret::'undefined' | binary(),client_handshake_secret::'undefined' | binary(),server_handshake_secret::'undefined' | binary(),client_handshake_key::'undefined' | binary(),client_handshake_iv::'undefined' | binary(),server_handshake_key::'undefined' | binary(),server_handshake_iv::'undefined' | binary(),protected_secret::'undefined' | binary(),pkt_num_protected_secret::'undefined' | binary(),client_protected_secret::'undefined' | binary(),server_protected_secret::'undefined' | binary(),client_protected_key::'undefined' | binary(),client_protected_iv::'undefined' | binary(),server_protected_key::'undefined' | binary(),server_protected_iv::'undefined' | binary(),transcript::binary(),tls_version::non_neg_integer(),cert_chain::'undefined' | [binary()],cert::'undefined' | binary(),cert_priv_key::'undefined' | binary(),pub_key::'undefined' | binary(),priv_key::'undefined' | binary(),cipher::'undefined' | {atom(),atom()},signature_alg::'undefined' | {atom(),atom(),atom()}},retry_token::'undefined' | binary()})
+________________________________________________________________________________
+Please file a bug in https://github.com/jeremyjh/dialyxir/issues with this message.
+
+Failed to parse warning:
+[{:"(", 1}, {:atom_part, 1, 'V'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 's'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'n'}, {:",", 1}, {:atom_part, 1, 'F'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'm'}, {:atom_part, 1, 'e'}, {:_, 1}, {:atom_part, 1, 'I'}, {:atom_part, 1, 'n'}, {:atom_part, 1, 'f'}, {:atom_part, 1, 'o'}, {:")", 1}, {:->, 1}, {:atom_part, 1, 'R'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 's'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'w'}, {:atom_part, 1, 'h'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'n'}, {:atom_part, 1, 'V'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 's'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'n'}, {:::, 1}, {:atom_part, 1, 'b'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'n'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 'y'}, {:"(", 1}, {:")", 1}, {:",", 1}, {:atom_part, ...}, {...}, ...]
+
+
+Legacy warning:
+src/quic_stream.erl:160: The call quic_packet:form_frame('stream_open',Stream_ID::any()) will never return since the success typing is (binary(),any()) -> any() and the contract is (Version,Frame_Info) -> Result when Version :: binary(), Frame_Info :: quic_frame(), Result :: {'ok',quic_frame()} | {'error',Reason}, Reason :: gen_quic:frame_error()
+________________________________________________________________________________
+Please file a bug in https://github.com/jeremyjh/dialyxir/issues with this message.
+
+Failed to parse warning:
+[{:"(", 1}, {:atom_part, 1, 'V'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 's'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'n'}, {:",", 1}, {:atom_part, 1, 'F'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'm'}, {:atom_part, 1, 'e'}, {:_, 1}, {:atom_part, 1, 'I'}, {:atom_part, 1, 'n'}, {:atom_part, 1, 'f'}, {:atom_part, 1, 'o'}, {:")", 1}, {:->, 1}, {:atom_part, 1, 'R'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 's'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'w'}, {:atom_part, 1, 'h'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'n'}, {:atom_part, 1, 'V'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 's'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'o'}, {:atom_part, 1, 'n'}, {:::, 1}, {:atom_part, 1, 'b'}, {:atom_part, 1, 'i'}, {:atom_part, 1, 'n'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 'y'}, {:"(", 1}, {:")", 1}, {:",", 1}, {:atom_part, ...}, {...}, ...]
+
+
+Legacy warning:
+src/quic_stream.erl:191: The call quic_packet:form_frame('stream_data',{_,non_neg_integer(),_,bitstring()}) will never return since the success typing is (binary(),any()) -> any() and the contract is (Version,Frame_Info) -> Result when Version :: binary(), Frame_Info :: quic_frame(), Result :: {'ok',quic_frame()} | {'error',Reason}, Reason :: gen_quic:frame_error()
+________________________________________________________________________________
+[33mdone (warnings were emitted)[0m

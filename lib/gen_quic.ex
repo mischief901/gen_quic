@@ -13,8 +13,8 @@ defmodule GenQuic do
   @doc """
   Attempts to connect a client's socket to a server.
   """
-  def connect(socket, ip, port, options) do
-    :gen_quic.connect(socket, ip, port, options)
+  def connect(ip, port, options, timeout) do
+    :gen_quic.connect(ip, port, options, timeout)
   end
 
   def listen(port, options) do

@@ -49,13 +49,6 @@ register_name({Socket, Stream}, Pid) ->
   yes;
 
 register_name(Socket, Pid) ->
-  case ets:whereis(?TABLE) of
-    undefined ->
-      %% Initialize the tables if they do not exist yet.
-      start();
-    _ ->
-      ok
-  end,
   ets:insert(?TABLE, {Socket, {Pid, undefined, #{}}}),
   yes.
 
@@ -129,7 +122,7 @@ whereis_name({Socket, balancer}) ->
   case ets:lookup(?TABLE, Socket) of
     [] ->
       undefined;
-    [{_, Pid, _}] ->
+    [{Socket, {_, Pid, _}}] ->
       Pid
   end;
 
@@ -137,7 +130,7 @@ whereis_name({Socket, Stream}) ->
   case ets:lookup(?TABLE, Socket) of
     [] ->
       undefined;
-    [{_, _, Stream_Map}] ->
+    [{Socket, {_, _, Stream_Map}}] ->
       maps:get(Stream, Stream_Map, undefined)
   end;
 
@@ -145,7 +138,7 @@ whereis_name(Socket) ->
   case ets:lookup(?TABLE, Socket) of
     [] ->
       undefined;
-    [{Pid, _, _}] ->
+    [{Socket, {Pid, _, _}}] ->
       Pid
   end.
 

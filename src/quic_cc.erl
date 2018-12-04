@@ -1,9 +1,8 @@
-%%% @author alex <alex@alex-Lenovo>
+%%% @author alex
 %%% @copyright (C) 2018, alex
 %%% @doc
 %%% Initializes and updates timers and congestion window when packets are sent.
 %%% @end
-%%% Created : 10 Sep 2018 by alex <alex@alex-Lenovo>
 
 -module(quic_cc).
 
@@ -14,6 +13,7 @@
 -export([available_packet_size/1]).
 -export([handle_acks/4]).
 -export([queue_ack/3]).
+-export([get_ack/2]).
 -export([packet_lost/2]).
 -export([congestion_event/2]).
 
@@ -68,8 +68,15 @@ congestion_init(Data) ->
          bytes_in_flight => 0,
          end_of_recovery => 0,
          ss_threshold => infinity,
-         ecn_ce_counter => 0,
-         largest_acked_packet => 0
+         ecn_ce_counter => {0, 0, 0},
+         largest_acked_packet => 0,
+         acks_to_be_sent => #{initial => {0, []},
+                              handshake => {0, []},
+                              application => {0, []}
+                             },
+         %% acks_to_be_sent is a map from pkt num level to a tuple of: 
+         %% {initial ack delay, list of acks to be sent}.
+         ack_delay_exp => 3
         },
   
   Data#quic_data{cc_info = CC}.
@@ -226,7 +233,7 @@ handle_acks(CC_State0,
               } = Data0,
             Crypto_Range, 
             #{type := ack_frame,
-              largest_ack := Largest_Ack,
+              largest := Largest_Ack,
               acks := Acks,
               ack_delay := Delay
              } = Ack_Frame) ->
@@ -305,8 +312,8 @@ check_packet_loss(CC_State, #quic_data{timer_info =
                                          #{sent_packets := Sent,
                                            reorder_threshold := Reorder}} = Data,
                   Largest_Pkt_Num) ->
-  %% The Filter returns true when the difference in packet numbers to largest is more 
-  %% than the reordering threshold.
+  %% The Filter returns true when the difference in outstanding packets to largest is 
+  %% more than the reordering threshold.
   Filter = fun(Key, _) -> abs(Key - Largest_Pkt_Num) > Reorder end,
   case maps:to_list(maps:filter(Filter, Sent)) of
     List when length(List) =:= 0 ->
@@ -325,7 +332,7 @@ check_packet_loss(CC_State, #quic_data{timer_info =
                 early_data |
                 crypto,
     Data :: #quic_data{},
-    Recv :: #{},
+    Recv :: map(),
     Result :: {CC_State, Data}.
 
 handle_ack_cc(CC_State, Data, Recv0) when is_map(Recv0) ->
@@ -440,10 +447,60 @@ update_rtt(Smooth0, Var0, Latest, Delay, Min_RTT) ->
     Pkt_Num :: non_neg_integer(),
     Result :: {ok, Data}.
 
+queue_ack(#quic_data{cc_info = #{acks_to_be_sent := Ack_Ranges} = CC0
+                    } = Data0, Range0, Pkt_Num) ->
+  Range = case Range0 of
+            early_data -> application;
+            short -> application;
+            _ -> Range0
+          end,
+  New_Range = 
+    case maps:get(Range, Ack_Ranges) of
+      {_, []} ->
+        %% Need to set the time to calculate the ack delay when sending.
+        Current_Time = erlang:monotonic_time(),
+        {Current_Time, [Pkt_Num]};
+      {T, Acks} ->
+        {T, [Pkt_Num | Acks]}
+    end,
+  CC = CC0#{acks_to_be_sent := Ack_Ranges#{Range := New_Range}},
+  {ok, Data0#quic_data{cc_info = CC}};
+
 queue_ack(Data, Pkt_Type, Pkt_Num) ->
   io:format("Unimplemented: queue_ack.~n"),
   {ok, Data}.
 
+
+-spec get_ack(Range, Data) -> Result when
+    Range :: initial |
+             handshake |
+             application,
+    Data :: #quic_data{},
+    Result :: {ok, Data, Ack_Info},
+    Ack_Info :: map().
+
+get_ack(Range, #quic_data{cc_info = 
+                            #{acks_to_be_sent := Ack_Map,
+                              ack_delay_exp := Delay_Exp
+                             } = CC0
+                         } = Data0) ->
+  case maps:get(Range, Ack_Map) of
+    {_, []} ->
+      {ok, Data0, #{}};
+    {Time, Acks} ->
+      Current_Time = erlang:monotonic_time(),
+      Diff = Current_Time - Time,
+      Delay = round(math:fmod(Diff, Delay_Exp)),
+      CC = CC0#{acks_to_be_sent := Ack_Map#{Range := {0, []}}},
+      Ack_Frame = #{type => ack_frame,
+                    acks => Acks,
+                    ack_delay => Delay
+                   },
+      {ok, Data0#quic_data{cc_info = CC}, Ack_Frame}
+  end;
+
+get_ack(Type, #quic_data{} = Data) ->
+  {ok, Data, #{}}.
 
 -spec packet_lost(Data, Pkt_Nums) -> Result when
     Data :: #quic_data{},

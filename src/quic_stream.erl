@@ -10,7 +10,7 @@
 
 -include("quic_headers.hrl").
 
--export([open_stream/2]).
+-export([open_stream/3]).
 -export([add_stream/4]).
 -export([add_peer_stream/3]).
 -export([send/2]).
@@ -23,14 +23,15 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3, format_status/2]).
 
--spec open_stream(Socket, Default_Options) -> Result when
+-spec open_stream(Socket, Version, Default_Options) -> Result when
     Socket :: gen_quic:socket(),
+    Version :: binary() | atom(),
     Default_Options :: map(),
     Result :: {ok, Pid},
     Pid :: pid().
 
-open_stream(Socket, Default_Options) ->
-  gen_server:start_link(?MODULE, [Socket, Default_Options], []).
+open_stream(Socket, Version, Default_Options) ->
+  gen_server:start_link(?MODULE, [Socket, Version, Default_Options], []).
 
 
 -spec add_stream(Pid, Owner, Stream_ID, Options) -> Result when
@@ -114,10 +115,11 @@ shutdown(Pid) ->
 %%% gen_server callbacks
 %%%===================================================================
 
-init([Socket, Default_Options]) ->
+init([Socket, Version, Default_Options]) ->
   process_flag(trap_exit, true),
-  
+
   {ok, #{socket => Socket,
+         version => Version,
          stream_ids => #{},
          default_options => Default_Options}}.
 
@@ -133,7 +135,7 @@ handle_call({controlling_process, Stream_ID, Pid}, From,
       {reply, {error, not_found}, State};
 
     #{owner := From} = Stream_Data0 ->
-      Stream_Data = Stream_Data0#{owner => Pid},
+      Stream_Data = Stream_Data0#{owner := Pid},
       {reply, ok, State#{stream_ids := Stream0#{Stream_ID := Stream_Data}}};
 
     _ ->
@@ -147,6 +149,7 @@ handle_call(_Request, _From, State) ->
 
 handle_cast({add_stream, Owner, Stream_ID, Options},
             #{socket := Socket,
+              version := Version,
               stream_ids := Stream0} = State) ->
   Stream_Type = maps:get(type, Options),
   Stream1 = maps:put(Stream_ID, #{owner => Owner,
@@ -157,7 +160,9 @@ handle_cast({add_stream, Owner, Stream_ID, Options},
                                   send_offset => 0},
                      Stream0),
   Pack_Type = maps:get(pack, Options, none),
-  Frame = quic_packet:form_frame(stream_open, Stream_ID),
+  Frame0 = #{type => stream_open,
+             stream_id => Stream_ID},
+  {ok, Frame} = quic_packet:form_frame(Version, Frame0),
   quic_conn:send(Socket, {Pack_Type, Frame}),
   {noreply, State#{stream_ids := Stream1}};
 
@@ -177,6 +182,7 @@ handle_cast({add_peer_stream, Stream_ID, Init_Frame},
 
 handle_cast({send, Stream_ID, Raw_Data},
             #{socket := Socket,
+              version := Version,
               stream_ids := Stream0
              } = State) ->
   case maps:get(Stream_ID, Stream0, undefined) of
@@ -186,10 +192,12 @@ handle_cast({send, Stream_ID, Raw_Data},
     #{send_offset := Offset,
       options := Options
      } = Stream_Data0 ->
+      Frame0 = #{type => stream_data,
+                 offset => Offset,
+                 stream_id => Stream_ID,
+                 binary => Raw_Data},
       Length = byte_size(Raw_Data),
-
-      {ok, Frame} = quic_packet:form_frame(stream_data, 
-                                           {Stream_ID, Length, Offset, Raw_Data}),
+      {ok, Frame} = quic_packet:form_frame(Version, Frame0),
       Pack_Type = maps:get(pack, Options, none),
       quic_conn:send(Socket, {Pack_Type, Frame}),
       Stream_Data = Stream_Data0#{send_offset := Offset + Length},

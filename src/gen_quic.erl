@@ -12,7 +12,7 @@
 -module(gen_quic).
 
 %% API
-%% These will change as the module comes together
+-export([start/0]).
 -export([connect/3, connect/4]).
 -export([listen/2]).
 -export([accept/1, accept/2]).
@@ -25,7 +25,6 @@
 -export([setopts/2, getopts/2]).
 %% -export([set_stream_opts/2, get_stream_opts/2]).
 
-%-include("inet_int.hrl").
 
 -type socket() :: port().
 
@@ -71,16 +70,27 @@
         packing_priority |
         balancer_opts.
 
-%% This will be expanded later.
+%% These will be expanded later.
 -type error() ::
         any().
 
--export_type([stream_option/0, balancer_option/0, option/0, option_name/0, error/0]).
+-type frame_error() :: 
+        any().
+
+-export_type([stream_option/0, balancer_option/0, option/0, option_name/0]).
+-export_type([error/0, frame_error/0]).
 -export_type([socket/0, stream/0]).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+
+-spec start() -> ok.
+start() ->
+  crypto:start(),
+  quic_registry:start(),
+  ok.
 
 %%
 %% Connect: Probably the correct way to go about opening these sockets.
@@ -115,7 +125,7 @@ connect(Address, Port, Opts) ->
 
 connect(Address, Port, Opts, Time) ->
   Timer = inet:start_timer(Time),
-  Res = (catch connect1(Address, Port, Opts, Timer)),
+  Res = connect1(Address, Port, Opts, Timer),
   _ = inet:stop_timer(Timer),
   case Res of
     {ok, Socket} ->

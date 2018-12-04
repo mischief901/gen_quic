@@ -1,15 +1,14 @@
 %%%-------------------------------------------------------------------
-%%% @author alex <alex@alex-Lenovo>
+%%% @author alex
 %%% @copyright (C) 2018, alex
 %%% @doc
-%%%  The ack parsing and ack_frame creation are wrong. Needs changing.
+%%%
 %%% @end
-%%% Created :  6 Jun 2018 by alex <alex@alex-Lenovo>
 %%%-------------------------------------------------------------------
 -module(quic_parser_vx_1).
 
 %% API
--export([parse_frames/2]).
+-export([parse_frames/1]).
 
 -compile(inline).
 
@@ -17,18 +16,17 @@
 -include("quic_vx_1.hrl").
 
 
--spec parse_frames(Payload, Data) -> Result when
+-spec parse_frames(Payload) -> Result when
     Payload :: binary(),
-    Data :: #quic_data{},
-    Result :: {Data, Frames, Acks, TLS_Info} |
+    Result :: {Frames, Acks, TLS_Info} |
               {error, Reason},
     Frames :: quic_frame(),
     Acks :: quic_frame(),
     TLS_Info :: #tls_record{},
     Reason :: gen_quic:error().
 
-parse_frames(<<Frames/binary>>, Data) ->
-  parse_frame(Frames, Data, []).
+parse_frames(<<Frames/binary>>) ->
+  parse_frame(Frames, []).
 
 %% These functions are the list of functions to call when a specific type is 
 %% parsed. This enables the entire packet to be parsed with optimized 
@@ -96,15 +94,21 @@ stream_data_blocked() ->
 %% New_Conn_ID reads a sequence number and a new connection ID with the
 %% 128 bit stateless retry token.
 new_conn_id() -> 
-  [parse_var_length, 
-   parse_conn_id, 
-   parse_token, 
+  [parse_conn_len,
+   parse_var_length,
+   parse_conn_id,
+   parse_token,
    parse_frame].
 
 %% Stop_Sending reads a stream id and app error code
 stop_sending() -> 
   [parse_var_length, 
    parse_app_error,
+   parse_frame].
+
+%% retire_conn_id has a single sequence number of variable length
+retire_conn_id() ->
+  [parse_var_length,
    parse_frame].
 
 %% ack_frame reads the largest ack in the ack block, the ack_delay, and the
@@ -115,6 +119,19 @@ ack_frame() ->
    parse_var_length,
    parse_ack_blocks,
    add_end_ack,
+   parse_frame].
+
+%% same as ack_frame, but with the ecn block added.
+ack_frame_ecn() -> 
+  [parse_var_length, 
+   parse_var_length,
+   parse_var_length,
+   parse_ack_blocks,
+   add_end_ack,
+   parse_var_length,
+   parse_var_length,
+   parse_var_length,
+   add_end_ecn,
    parse_frame].
 
 %% Path_Challenge and Path_Response read the 64 bit random Nonce for
@@ -148,114 +165,128 @@ stream_length(1) -> [parse_var_length, parse_message, parse_frame].
 %% optimizations can be utilized. Calling Fun(Packet, ...) is too dynamic for the
 %% compiler to allow the optimizations.
 
-parse_next(<<Packet/bits>>, Packet_Info, Acc, [Next_Fun | Funs]) ->
+parse_next(<<Packet/bits>>, Acc, [Next_Fun | Funs]) ->
   case Next_Fun of
+    add_end_ecn ->
+      %% Adds an atom to indicate the presence of ecn info.
+      parse_next(Packet, [end_ecn | Acc], Funs);
+
     add_end_ack ->
       %% This adds an atom to the stack to indicate the end of an ack block.
-      parse_next(Packet, Packet_Info, [end_ack_block | Acc], Funs);
+      parse_next(Packet, [end_ack_block | Acc], Funs);
 
     validate_packet ->
-      validate_packet(Packet, Packet_Info, Acc, Funs);
+      validate_packet(Packet, Acc, Funs);
 
     parse_frame ->
-      parse_frame(Packet, Packet_Info, Acc);
+      parse_frame(Packet, Acc);
 
     parse_var_length ->
-      parse_var_length(Packet, Packet_Info, Acc, Funs);
+      parse_var_length(Packet, Acc, Funs);
+
+    parse_conn_len ->
+      parse_conn_len(Packet, Acc, Funs);
+
+    parse_conn_id ->
+      parse_conn_id(Packet, Acc, Funs);
 
     parse_conn_error ->
-      parse_conn_error(Packet, Packet_Info, Acc, Funs);
+      parse_conn_error(Packet, Acc, Funs);
 
     parse_app_error ->
-      parse_app_error(Packet, Packet_Info, Acc, Funs);
+      parse_app_error(Packet, Acc, Funs);
 
     parse_message ->
-      parse_message(Packet, Packet_Info, Acc, Funs);
+      parse_message(Packet, Acc, Funs);
 
     parse_ack_blocks ->
-      parse_ack_blocks(Packet, Packet_Info, Acc, Funs);
+      parse_ack_blocks(Packet, Acc, Funs);
 
     parse_token ->
-      parse_token(Packet, Packet_Info, Acc, Funs)
+      parse_token(Packet, Acc, Funs)
   end;
 
-parse_next(<<>>, Packet_Info, Acc, []) ->
-  validate_packet(Packet_Info, Acc);
+parse_next(<<>>, Acc, []) ->
+  validate_packet(Acc);
 
-parse_next(<<>>, _Packet_Info, _Acc, Funs) ->
+parse_next(<<>>, __Acc, _Funs) ->
   {error, protocol_violation}.
 
 
 %% Called when the stream uses the remainder of the packet
 %% If any funs are remaining, a protocol violation error is thrown.
 %% TODO: Needs different name.
-validate_packet(<<Message/binary>>, Pkt_Info, Stack, []) ->
-  validate_packet(Pkt_Info, [Message | Stack]);
+validate_packet(<<Message/binary>>, Stack, []) ->
+  validate_packet([Message | Stack]);
 
-validate_packet(Other, Pkt_Info, Stack, Funs) ->
+validate_packet(_Other, _Stack, _Funs) ->
   {error, protocol_violation}.
 
 %% Crawls through the Stack and places items into the correct records.
 %% Pushes onto Acc (putting the payload back in order)
 %% Returns when stack is empty.
 %% TODO: Add Crypto frame and crypto acc.
-validate_packet(Pkt_Info, Stack) ->
-  validate_packet(Pkt_Info, Stack, [], [], none).
+validate_packet(Stack) ->
+  validate_packet(Stack, [], [], none).
 
-validate_packet(Pkt_Info, [], Acc, Ack_Frames, TLS_Info) ->
-  {ok, Pkt_Info, Acc, Ack_Frames, TLS_Info};
+validate_packet([], Acc, Ack_Frames, TLS_Info) ->
+  {ok, Acc, Ack_Frames, TLS_Info};
 
 %% 0 - item frames
-validate_packet(Pkt_Info, [ping | Rest], Acc, Ack_Frames, TLS_Info) ->
-  validate_packet(Pkt_Info, Rest, [#{type => ping} | Acc], Ack_Frames, TLS_Info);
+validate_packet([ping | Rest], Acc, Ack_Frames, TLS_Info) ->
+  validate_packet(Rest, [#{type => ping} | Acc], Ack_Frames, TLS_Info);
 
 
 %% 1 - item frames
-validate_packet(Pkt_Info, [Max_Data, max_data | Rest], Acc, Ack_Frames, TLS_Info) ->
+validate_packet([Max_Data, max_data | Rest], Acc, Ack_Frames, TLS_Info) ->
   Frame = #{
             type => max_data, 
             max_data => Max_Data
            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, [Max_ID, max_stream_id | Rest], Acc, Ack_Frames, TLS_Info) ->
+validate_packet([Max_ID, max_stream_id | Rest], Acc, Ack_Frames, TLS_Info) ->
   Frame = #{
             type => max_stream_id, 
             max_stream_id => Max_ID
            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, [Offset, data_blocked | Rest], Acc, Ack_Frames, TLS_Info) ->
+validate_packet([Offset, data_blocked | Rest], Acc, Ack_Frames, TLS_Info) ->
   Frame = #{
             type => data_blocked, 
             offset => Offset
            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, [Stream_ID, stream_id_blocked | Rest], Acc, Ack_Frames, TLS_Info) ->
+validate_packet([Stream_ID, stream_id_blocked | Rest], Acc, Ack_Frames, TLS_Info) ->
   Frame = #{
             type => stream_id_blocked, 
             stream_id => Stream_ID
             },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, [Challenge, path_challenge | Rest], Acc, Ack_Frames, TLS_Info) ->
+validate_packet([Challenge, path_challenge | Rest], Acc, Ack_Frames, TLS_Info) ->
   Frame = #{
             type => path_challenge, 
             challenge => Challenge
            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, [Challenge, path_response | Rest], Acc, Ack_Frames, TLS_Info) ->
+validate_packet([Challenge, path_response | Rest], Acc, Ack_Frames, TLS_Info) ->
   Frame = #{
             type => path_response, 
             challenge => Challenge
            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+
+validate_packet([Sequence, retire_conn_id | Rest], Acc, Ack_Frames, TLS_Info) ->
+  Frame = #{ type => retire_conn_id,
+             sequence => Sequence},
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 %% 2 - item frames
-validate_packet(Pkt_Info, 
-                [App_Error, Stream_ID, stop_sending | Rest], 
+validate_packet([App_Error, Stream_ID, stop_sending | Rest], 
                 Acc, Ack_Frames, TLS_Info) ->
 
   Frame = #{
@@ -264,10 +295,9 @@ validate_packet(Pkt_Info,
             error_code => App_Error
            },
 
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, 
-                [Offset, Stream_ID, stream_data_blocked | Rest], 
+validate_packet([Offset, Stream_ID, stream_data_blocked | Rest], 
                 Acc, Ack_Frames, TLS_Info) ->
 
   <<_:60, Type:1, Owner:1>> = <<Stream_ID:62>>,
@@ -280,10 +310,9 @@ validate_packet(Pkt_Info,
             stream_type => Type
            },
 
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, 
-                [Max_Stream_Data, Stream_ID, max_stream_data | Rest], 
+validate_packet([Max_Stream_Data, Stream_ID, max_stream_data | Rest], 
                 Acc, Ack_Frames, TLS_Info) ->
 
   <<_:60, Type:1, Owner:1>> = <<Stream_ID:62>>,
@@ -296,10 +325,9 @@ validate_packet(Pkt_Info,
             stream_type => Type
            },
 
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, 
-                [Message, App_Error, app_close | Rest], 
+validate_packet([Message, App_Error, app_close | Rest], 
                 Acc, Ack_Frames, TLS_Info) ->
 
   Frame = #{
@@ -308,10 +336,9 @@ validate_packet(Pkt_Info,
             error_message => Message
            },
 
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, 
-                [Message, Conn_Error, conn_close | Rest], 
+validate_packet([Message, Conn_Error, conn_close | Rest], 
                 Acc, Ack_Frames, TLS_Info) ->
 
   Frame = #{
@@ -320,11 +347,10 @@ validate_packet(Pkt_Info,
             error_message => Message
            },
 
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 %% 3 - item frames
-validate_packet(Pkt_Info, 
-                [Offset, App_Error, Stream_ID, rst_stream | Rest], 
+validate_packet([Offset, App_Error, Stream_ID, rst_stream | Rest], 
                 Acc, Ack_Frames, TLS_Info) ->
 
   Frame = #{
@@ -334,10 +360,9 @@ validate_packet(Pkt_Info,
             offset => Offset
            },
 
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, 
-                [Token, Conn_ID, Seq_Num, new_conn_id | Rest], 
+validate_packet([Token, Conn_ID, Seq_Num, new_conn_id | Rest], 
                 Acc, Ack_Frames, TLS_Info) ->
 
   Frame = #{
@@ -347,12 +372,11 @@ validate_packet(Pkt_Info,
             sequence => Seq_Num
            },
 
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 %% Stream items either 1 item, 2 items, 3 items, or 4 items.
 %% Either stream_data or stream_close type.
-validate_packet(Pkt_Info, 
-                [Message, Stream_ID, {stream_data, 0, _} | Rest], 
+validate_packet([Message, Stream_ID, {stream_data, 0, _} | Rest], 
                 Acc, Ack_Frames, TLS_Info) ->
 
   <<_:60, Type:1, Owner:1>> = <<Stream_ID:62>>,
@@ -365,10 +389,9 @@ validate_packet(Pkt_Info,
             stream_type => Type,
             data => Message
            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info,
-                [Message, Stream_ID, {stream_close, 0, _} | Rest],
+validate_packet([Message, Stream_ID, {stream_close, 0, _} | Rest],
                 Acc, Ack_Frames, TLS_Info) ->
 
   <<_:60, Type:1, Owner:1>> = <<Stream_ID:62>>,
@@ -381,11 +404,10 @@ validate_packet(Pkt_Info,
             stream_type => Type,
             data => Message
            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);  
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);  
 
 %% Offset set
-validate_packet(Pkt_Info, 
-                [Message, Offset, Stream_ID, {stream_data, 1, _} | Rest], 
+validate_packet([Message, Offset, Stream_ID, {stream_data, 1, _} | Rest], 
                 Acc, Ack_Frames, TLS_Info) ->
 
   <<_:60, Type:1, Owner:1>> = <<Stream_ID:62>>,
@@ -398,10 +420,9 @@ validate_packet(Pkt_Info,
             stream_type => Type,
             data => Message
            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
-validate_packet(Pkt_Info, 
-                [Message, Offset, Stream_ID, {stream_close, 1, _} | Rest], 
+validate_packet([Message, Offset, Stream_ID, {stream_close, 1, _} | Rest], 
                 Acc, Ack_Frames, TLS_Info) ->
 
   <<_:60, Type:1, Owner:1>> = <<Stream_ID:62>>,
@@ -414,7 +435,7 @@ validate_packet(Pkt_Info,
             stream_type => Type,
             data => Message
            },
-  validate_packet(Pkt_Info, Rest, [Frame | Acc], Ack_Frames, TLS_Info);
+  validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 %% Ack block. This is the only one that keeps the reversed ordered.
 %% Smallest to Largest makes more sense to process on the connection side.
@@ -422,160 +443,163 @@ validate_packet(Pkt_Info,
 %% This does traverse the entire ack block frame twice, so it is a potential
 %% source of optimization.
 %% TODO: Update this to something better.
-validate_packet(Pkt_Info, [end_ack_block | Rest], Frames, Ack_Frames, TLS_Info) ->
-  read_acks(Pkt_Info, Rest, Frames, Ack_Frames, TLS_Info, []).
+validate_packet([end_ack_block | Rest], Frames, Ack_Frames, TLS_Info) ->
+  read_acks(Rest, Frames, Ack_Frames, TLS_Info, []);
+
+validate_packet([end_ecn, ECN_CE, ECT1, ECT2 | Rest], Frames, Ack_Frames, TLS_Info) ->
+  read_acks(Rest, Frames, Ack_Frames, TLS_Info, [{ecn_count, {ECT1, ECT2, ECN_CE}}]).
+
 
 %% Pops all ack ranges off the stack and into a new accumulator to allow
 %% in order processessing of the ack ranges.
-read_acks(Pkt_Info, [Ack_Block, Block_Count, Delay, Largest_Ack, ack_frame | Stack], 
+read_acks([Ack_Block, Block_Count, Delay, Largest_Ack, ack_frame | Stack], 
           Frames, Ack_Frames, TLS_Info, Acc) ->
-
+  
   Ack_Frame = #{
                 type => ack_frame,
-                largest_ack => Largest_Ack,
-                smallest_ack => Largest_Ack,
-                block_count => Block_Count,
-                ack_delay => Delay
+                largest => Largest_Ack,
+                ack_delay => Delay,
+                acks => []
                },
-  construct_ack_frame(Pkt_Info, Stack, Frames, Ack_Frames, 
-                      TLS_Info, [Ack_Block | Acc], Ack_Frame);
 
-read_acks(Pkt_Info, [Ack_Block, Gap_Block | Rest], Frames, Ack_Frames, TLS_Info, Acc) ->
-  read_acks(Pkt_Info, Rest, Frames, Ack_Frames, TLS_Info, [Gap_Block, Ack_Block | Acc]).
+  construct_ack_frame(Stack, Frames, Ack_Frames, 
+                      TLS_Info, [Ack_Block | Acc], Ack_Frame, Largest_Ack);
+
+read_acks([Ack_Block, Gap_Block | Rest], Frames, Ack_Frames, TLS_Info, Acc) ->
+  read_acks(Rest, Frames, Ack_Frames, TLS_Info, [Gap_Block, Ack_Block | Acc]).
 
 %% Calculates the largest and smallest ack packet number in the frame
-%% Pushes it onto the ack_frame list in #quic_data{}.
-
-construct_ack_frame(Pkt_Info, Stack, Frames, Ack_Frames, 
+%% Pushes it onto the ack_frame list.
+construct_ack_frame(Stack, Frames, Ack_Frames, 
                     TLS_Info, [Ack], 
-                    #{
-                      smallest_ack := Largest,
-                      acks := Ack_List
-                     } = Frame0) ->
-
-  Smallest = Largest - Ack,
+                    #{acks := Ack_List
+                     } = Ack_Frame0, Prev_Largest) ->
+  Smallest = Prev_Largest - Ack, 
+  New_Ack_Range = lists:seq(Smallest, Prev_Largest),
   
-  New_Ack_Range = lists:seq(Smallest, Largest),
+  Ack_Frame = Ack_Frame0#{acks := [New_Ack_Range | Ack_List]},
   
-  Ack_Frame = Frame0#{
-                      smallest_ack => Smallest,
-                      acks => [New_Ack_Range | Ack_List]
-                     },
+  validate_packet(Stack, Frames, [Ack_Frame | Ack_Frames], TLS_Info);
 
-  validate_packet(Pkt_Info, Stack, Frames, [Ack_Frame | Ack_Frames], TLS_Info);
+construct_ack_frame(Stack, Frames, Ack_Frames, 
+                    TLS_Info, [Ack, {ecn_count, ECN_Counts}], 
+                    #{acks := Ack_List
+                     } = Ack_Frame0, Prev_Largest) ->
+  Smallest = Prev_Largest - Ack, 
+  New_Ack_Range = lists:seq(Smallest, Prev_Largest),
+  
+  Ack_Frame = Ack_Frame0#{acks := [New_Ack_Range | Ack_List],
+                          ecn_count => ECN_Counts},
+  
+  validate_packet(Stack, Frames, [Ack_Frame | Ack_Frames], TLS_Info);
 
 %% The next largest ack is given by:
 %% Next_Largest = Smallest - Gap - 2
 %% where, 
 %% Smallest = Largest - Ack
 %% See Section 7.15.1
-construct_ack_frame(Pkt_Info, Stack, Frames, Ack_Frames, 
-                    TLS_Info, [Ack, Gap | Rest], 
-                    #{
-                      largest_ack := Largest,
-                      smallest_ack := Smallest,
-                      acks := Ack_List,
-                      gaps := Gap_List
-                     } = Frame0) ->
+construct_ack_frame(Stack, Frames, Ack_Frames, 
+                    TLS_Info, [Ack, Gap | Rest],
+                    #{acks := Ack_List
+                     } = Frame0, Prev_Largest) ->
 
-  Smallest_Ack = Smallest - Ack,
-
-  New_Ack_Range = lists:seq(Smallest_Ack, Smallest),
+  Smallest_Ack = Prev_Largest - Ack,
+  New_Ack_Range = lists:seq(Smallest_Ack, Prev_Largest),
 
   Next_Largest = Smallest_Ack - Gap - 2,
 
-  New_Gap_Range = lists:seq(Next_Largest, Smallest_Ack),
+  Ack_Frame = Frame0#{acks := [New_Ack_Range | Ack_List]},
 
-  Ack_Frame = Frame0#{
-                      smallest => Next_Largest,
-                      acks => [New_Ack_Range | Ack_List],
-                      gaps => [New_Gap_Range | Gap_List]
-                     },
-
-  construct_ack_frame(Pkt_Info, Stack, Frames, TLS_Info, Ack_Frames, Rest, Ack_Frame).
+  construct_ack_frame(Stack, Frames, TLS_Info, Ack_Frames, Rest, Ack_Frame, Next_Largest).
 
 
 %% Not called anymore. Leaving for debug purposes.
 %% parse_frames(<<Binary/bits>>, Packet_Info) ->
-%%   parse_next(Binary, Packet_Info, [], [parse_frame]).
+%%   parse_next(Binary, [], [parse_frame]).
 
-parse_frame(<<0:1, 0:1, 0:1, 0:1, Type:4, Rest/bits>>, Pkt_Info, Stack) ->
+parse_frame(<<0:1, 0:1, 0:1, 0:1, Type:4, Rest/bits>>, Stack) ->
   case Type of
-    ?PADDING ->
-      parse_next(Rest, Pkt_Info, Stack, padding());
+    0 ->
+      parse_next(Rest, Stack, padding());
 
-    ?RST_STREAM ->
-      parse_next(Rest, Pkt_Info, [rst_stream | Stack], rst_stream());
+    1 ->
+      parse_next(Rest, [rst_stream | Stack], rst_stream());
 
-    ?CONN_CLOSE ->
-      parse_next(Rest, Pkt_Info, [conn_close | Stack], conn_close());
+    2 ->
+      parse_next(Rest, [conn_close | Stack], conn_close());
 
-    ?APP_CLOSE ->
-      parse_next(Rest, Pkt_Info, [app_close | Stack], app_close());
+    3 ->
+      parse_next(Rest, [app_close | Stack], app_close());
 
-    ?MAX_DATA ->
-      parse_next(Rest, Pkt_Info, [max_data | Stack], max_data());
+    4 ->
+      parse_next(Rest, [max_data | Stack], max_data());
 
-    ?MAX_STREAM_DATA ->
-      parse_next(Rest, Pkt_Info, [max_stream_data | Stack], max_stream_data());
+    5 ->
+      parse_next(Rest, [max_stream_data | Stack], max_stream_data());
 
-    ?MAX_STREAM_ID ->
-      parse_next(Rest, Pkt_Info, [max_stream_id | Stack], max_stream_id());
+    6 ->
+      parse_next(Rest, [max_stream_id | Stack], max_stream_id());
 
-    ?PING ->
-      parse_next(Rest, Pkt_Info, [ping | Stack], ping());
+    7 ->
+      parse_next(Rest, [ping | Stack], ping());
 
-    ?BLOCKED ->
-      parse_next(Rest, Pkt_Info, [data_blocked | Stack], data_blocked());
+    8 ->
+      parse_next(Rest, [data_blocked | Stack], data_blocked());
 
-    ?STREAM_BLOCKED ->
-      parse_next(Rest, Pkt_Info, [stream_data_blocked | Stack], stream_data_blocked());
+    9 ->
+      parse_next(Rest, [stream_data_blocked | Stack], stream_data_blocked());
 
-    ?STREAM_ID_BLOCKED ->
-      parse_next(Rest, Pkt_Info, [stream_id_blocked | Stack], stream_id_blocked());
+    10 ->
+      parse_next(Rest, [stream_id_blocked | Stack], stream_id_blocked());
 
-    ?NEW_CONN_ID ->
-      parse_next(Rest, Pkt_Info, [new_conn_id | Stack], new_conn_id());
+    11 ->
+      parse_next(Rest, [new_conn_id | Stack], new_conn_id());
 
-    ?STOP_SENDING ->
-      parse_next(Rest, Pkt_Info, [stop_sending | Stack], stop_sending());
+    12 ->
+      parse_next(Rest, [stop_sending | Stack], stop_sending());
 
-    ?ACK_FRAME ->
-      parse_next(Rest, Pkt_Info, [ack_frame | Stack], ack_frame());
+    13 ->
+      parse_next(Rest, [retire_conn_id | Stack], retire_conn_id());
 
-    ?PATH_CHALLENGE ->
-      parse_next(Rest, Pkt_Info, [path_challenge | Stack], path_challenge());
+    14 ->
+      parse_next(Rest, [path_challenge | Stack], path_challenge());
 
-    ?PATH_RESPONSE ->
-      parse_next(Rest, Pkt_Info, [path_response | Stack], path_response())
+    15 ->
+      parse_next(Rest, [path_response | Stack], path_response())
   end;
 
-parse_frame(<<1:4, 0:1, Off:1, Len:1, 0:1 , Rest/bits>>, Pkt_Info, Stack) ->
-  parse_next(Rest, Pkt_Info, 
+parse_frame(<<26:8, Rest/bits>>, Stack) ->
+  parse_next(Rest, [ack_frame | Stack], ack_frame());  
+
+parse_frame(<<27:8, Rest/bits>>, Stack) ->
+  parse_next(Rest, [ack_frame | Stack], ack_frame_ecn());
+
+parse_frame(<<1:4, 0:1, Off:1, Len:1, 0:1 , Rest/bits>>, Stack) ->
+  parse_next(Rest, 
              [{stream_data, Off, Len} | Stack], 
              stream({Off, Len}));
 
-parse_frame(<<1:4, 0:1, Off:1, Len:1, 1:1 , Rest/bits>>, Pkt_Info, Stack) ->
-  parse_next(Rest, Pkt_Info, 
+parse_frame(<<1:4, 0:1, Off:1, Len:1, 1:1 , Rest/bits>>, Stack) ->
+  parse_next(Rest, 
              [{stream_close, Off, Len} | Stack], 
              stream({Off, Len}));
 
-parse_frame(_Other, _Pkt_Info, _Stack) ->
+parse_frame(_Other, __Stack) ->
   {error, badarg}.
 
 
-parse_app_error(<<?STOPPING:16, Rest/binary>>, Pkt_Info, Stack, Funs) ->
-  parse_next(Rest, Pkt_Info, [stopping | Stack], Funs);
+parse_app_error(<<?STOPPING:16, Rest/binary>>, Stack, Funs) ->
+  parse_next(Rest, [stopping | Stack], Funs);
 
-parse_app_error(<<_App_Error:16, Rest/binary>>, Pkt_Info, Stack, Funs) ->
-  parse_next(Rest, Pkt_Info, [app_error | Stack], Funs);
+parse_app_error(<<_App_Error:16, Rest/binary>>, Stack, Funs) ->
+  parse_next(Rest, [app_error | Stack], Funs);
 
-parse_app_error(Other, Pkt_Info, Stack, Funs) ->
+parse_app_error(Other, Stack, Funs) ->
   {error, badarg}.
 
 
-parse_conn_error(<<Type:16, Rest/bits>>, Pkt_Info, Stack, Funs) ->
-  parse_next(Rest, Pkt_Info, [conn_error(Type) | Stack], Funs).
+parse_conn_error(<<Type:16, Rest/bits>>, Stack, Funs) ->
+  parse_next(Rest, [conn_error(Type) | Stack], Funs).
 
 
 conn_error(?NO_ERROR) ->
@@ -610,63 +634,77 @@ conn_error(Other) ->
   {error, badarg}.
 
 
-parse_token(<<Token:128, Rest/bits>>, Pkt_Info, Stack, Funs) ->
-  parse_next(Rest, Pkt_Info, [Token | Stack], Funs).
+parse_token(<<Token:128, Rest/bits>>, Stack, Funs) ->
+  parse_next(Rest, [Token | Stack], Funs).
 
 
-parse_ack_blocks(<<Binary/bits>>, Pkt_Info, [Count | _]=Stack, Funs) ->
-  parse_ack_blocks(Binary, Pkt_Info, Stack, Funs, Count).
+parse_ack_blocks(<<Binary/bits>>, [Count | _]=Stack, Funs) ->
+  parse_ack_blocks(Binary, Stack, Funs, Count).
 
 
 %% Parse one value for the final ack range.
-parse_ack_blocks(<<Binary/bits>>, Pkt_Info, Stack, Funs, 0) ->
-  parse_next(Binary, Pkt_Info, Stack, [parse_var_length, parse_var_length | Funs]);
+parse_ack_blocks(<<Binary/bits>>, Stack, Funs, 0) ->
+  parse_next(Binary, Stack, [parse_var_length, parse_var_length | Funs]);
 
 %% Parse two values, one ack range and one gap range.
-parse_ack_blocks(<<Binary/bits>>, Pkt_Info, Stack, Funs, Count) ->
-  parse_ack_blocks(Binary, Pkt_Info, Stack, [parse_var_length, parse_var_length | Funs], Count-1).
+parse_ack_blocks(<<Binary/bits>>, Stack, Funs, Count) ->
+  parse_ack_blocks(Binary, Stack, [parse_var_length, parse_var_length | Funs], Count-1).
 
 
-parse_var_length(<<Offset:2, Rest/bits>>, Pkt_Info, Stack, Funs) ->
-  parse_offset(Rest, Pkt_Info, Stack, Funs, Offset).
+parse_var_length(<<Offset:2, Rest/bits>>, Stack, Funs) ->
+  parse_offset(Rest, Stack, Funs, Offset).
 
-parse_offset(<<Integer:6, Rest/bits>>, Pkt_Info, Stack, Funs, 0) ->
-  parse_next(Rest, Pkt_Info, [Integer | Stack], Funs);
+parse_offset(<<Integer:6, Rest/bits>>, Stack, Funs, 0) ->
+  parse_next(Rest, [Integer | Stack], Funs);
 
-parse_offset(<<Integer:14, Rest/bits>>,Pkt_Info, Stack, Funs, 1) ->
-  parse_next(Rest, Pkt_Info, [Integer | Stack], Funs);
+parse_offset(<<Integer:14, Rest/bits>>,Stack, Funs, 1) ->
+  parse_next(Rest, [Integer | Stack], Funs);
 
-parse_offset(<<Integer:30, Rest/bits>>, Pkt_Info, Stack, Funs, 2) ->
-  parse_next(Rest, Pkt_Info, [Integer | Stack], Funs);
+parse_offset(<<Integer:30, Rest/bits>>, Stack, Funs, 2) ->
+  parse_next(Rest, [Integer | Stack], Funs);
 
-parse_offset(<<Integer:62, Rest/bits>>, Pkt_Info, Stack, Funs, 3) ->
-  parse_next(Rest, Pkt_Info, [Integer | Stack], Funs);
+parse_offset(<<Integer:62, Rest/bits>>, Stack, Funs, 3) ->
+  parse_next(Rest, [Integer | Stack], Funs);
 
-parse_offset(<<_Error/bits>>, Pkt_Info, Stack, _Funs, Offset) ->
+parse_offset(<<_Error/bits>>, Stack, _Funs, Offset) ->
   {error, badarg}.
 
 
+%% This is only used for the new connection id frame.
+parse_conn_len(<<_:3, Integer:5, Rest/bits>>, Stack, Funs) ->
+  parse_next(Rest, [Integer | Stack], Funs).
+
+
+parse_conn_id(<<Binary/bits>>, [_, Length | _] = Stack, Funs) ->
+  parse_conn_id(Binary, Stack, Funs, Length, <<>>).
+
+parse_conn_id(<<Binary/bits>>, Stack, Funs, 0, Conn_ID) ->
+  parse_next(Binary, [Conn_ID | Stack], Funs);
+
+parse_conn_id(<<Part:1/binary, Rest/bits>>, Stack, Funs, Len, Conn) ->
+  parse_conn_id(Rest, Stack, Funs, Len-1, <<Conn/binary, Part/binary>>).
+
 %% This is to allow for the sub-binary creation to be delayed.
-parse_message(<<Offset:2, Rest/bits>>, Pkt_Info, Stack, Funs) ->  
-  parse_offset_message(Rest, Pkt_Info, Stack, Funs, Offset).
+parse_message(<<Offset:2, Rest/bits>>, Stack, Funs) ->  
+  parse_offset_message(Rest, Stack, Funs, Offset).
 
-parse_message(<<Binary/bits>>, Pkt_Info, Stack, Funs, Length) ->
+parse_message(<<Binary/bits>>, Stack, Funs, Length) ->
   <<Message:Length, Rest/bits>> = Binary,
-  parse_next(Rest, Pkt_Info, [<<Message:Length>> | Stack], Funs).
+  parse_next(Rest, [<<Message:Length>> | Stack], Funs).
 
-parse_offset_message(<<Integer:6, Rest/bits>>, Pkt_Info, Stack, Funs, 0) ->
-  parse_message(Rest, Pkt_Info, Stack, Funs, Integer);
+parse_offset_message(<<Integer:6, Rest/bits>>, Stack, Funs, 0) ->
+  parse_message(Rest, Stack, Funs, Integer);
 
-parse_offset_message(<<Integer:14, Rest/bits>>,Pkt_Info, Stack, Funs, 1) ->
-  parse_message(Rest, Pkt_Info, Stack, Funs, Integer);
+parse_offset_message(<<Integer:14, Rest/bits>>,Stack, Funs, 1) ->
+  parse_message(Rest, Stack, Funs, Integer);
 
-parse_offset_message(<<Integer:30, Rest/bits>>, Pkt_Info, Stack, Funs, 2) ->
-  parse_message(Rest, Pkt_Info, Stack, Funs, Integer);
+parse_offset_message(<<Integer:30, Rest/bits>>, Stack, Funs, 2) ->
+  parse_message(Rest, Stack, Funs, Integer);
 
-parse_offset_message(<<Integer:62, Rest/bits>>, Pkt_Info, Stack, Funs, 3) ->
-  parse_message(Rest, Pkt_Info, Stack, Funs, Integer);
+parse_offset_message(<<Integer:62, Rest/bits>>, Stack, Funs, 3) ->
+  parse_message(Rest, Stack, Funs, Integer);
 
-parse_offset_message(<<_Error/bits>>, Pkt_Info, Stack, _Funs, Offset) ->
+parse_offset_message(<<_Error/bits>>, Stack, _Funs, Offset) ->
   {error, badarg}.
 
 

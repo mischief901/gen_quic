@@ -40,19 +40,14 @@ callback_mode() -> handle_event_function.
 
 init([#quic_data{
          type = Type
-        } = Data0, Quic_Opts]) when is_list(Quic_Opts) ->
-
+        } = Data0, Quic_Opts]) ->
+  io:format("Initializing Crypto.~n"),
   {ok, Data1} = quic_crypto:default_params(Data0, Quic_Opts),
-  Staging_Priority = 
-    case proplists:lookup(packing_priority, Quic_Opts) of
-      none ->
-        none;
-      {_, Value} ->
-        Value
-    end,
+  Staging_Priority = maps:get(packing_priority, Quic_Opts, none),
   {ok, Data2} = quic_staging:init(Data1, Staging_Priority),
+  io:format("Staging Initialized.~n"),
   {ok, Data3} = quic_crypto:crypto_init(Data2),
-
+  io:format("Connection Initialized.~n"),
   {ok, {initial, Type}, Data3}.
 
 

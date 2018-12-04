@@ -68,13 +68,12 @@ quic_params() ->
 
 default_params(#quic_data{type = client} = Data0, Options) ->
   %% Fold over the quic parameters list and any that exist in Options to a
-  %% #quic_params{} record.
-  
+  %% #quic_params{} record.  
   Params = lists:foldl(fun(Item, Param) ->
-                           case lists:keyfind(Item, 1, Options) of
-                             false ->
+                           case maps:get(Item, Options, undefined) of
+                             undefined ->
                                Param;
-                             {Item, Value} ->
+                             Value ->
                                add_param(Param, Item, Value)
                            end
                        end, #quic_params{}, quic_params()),
@@ -144,9 +143,24 @@ crypto_init(#quic_data{
 crypto_init(#quic_data{
                type = client,
                conn = #quic_conn{
+                         dest_conn_ID = undefined
+                        } = Conn
+              } = Data) ->
+  Dest_Conn_ID = crypto:strong_rand_bytes(8),
+  Src_Conn_ID = crypto:strong_rand_bytes(8),
+  set_initial(Data#quic_data{conn = 
+                               Conn#quic_conn{
+                                 dest_conn_ID = Dest_Conn_ID,
+                                 src_conn_ID = Src_Conn_ID
+                                }}, Dest_Conn_ID);
+
+crypto_init(#quic_data{
+               type = client,
+               conn = #quic_conn{
                          dest_conn_ID = Conn_ID
                         }
               } = Data) ->
+  io:format("Connection ID: ~p~n", [Conn_ID]),
   set_initial(Data, Conn_ID).
 
 
@@ -683,19 +697,11 @@ validate_tls(#quic_data{
 %% Maybe add a finished state to this for the fin verify data.
 
 
--spec add_transcript(Crypto_Info, Data) -> {ok, Data} when
+-spec add_transcript(Crypto_Frame, Data) -> {ok, Data} when
     Data :: #quic_data{},
-    Crypto_Info :: {Crypto_Type, Offset, Crypto_Bin},
-    Crypto_Type :: client_hello |
-                   server_hello |
-                   encrypted_exts |
-                   certificate |
-                   cert_verify |
-                   finished,
-    Offset :: non_neg_integer(),
-    Crypto_Bin :: binary().
+    Crypto_Frame :: quic_frame().
 
-add_transcript({Crypto_Type, Offset, Bin},
+add_transcript(#{crypto_type := Crypto_Type, offset := Offset, binary := Bin},
                #quic_data{crypto =
                             #quic_crypto{init_offsets = {Init_Send, Init_Recv},
                                          handshake_offsets = {Hand_Send, Hand_Recv},
@@ -715,7 +721,11 @@ add_transcript({Crypto_Type, Offset, Bin},
       {ok, Data0#quic_data{crypto =
                              Crypto0#quic_crypto{
                                handshake_offsets = {Hand_Send + Size, Hand_Recv},
-                               transcript = <<Transcript/binary, Bin/binary>>}}}
+                               transcript = <<Transcript/binary, Bin/binary>>}}};
+    _ -> 
+      %% In case a duplicate packet is received. This does not account for packets that
+      %% are out of order.
+      {ok, Data0}
   end.
       
 -spec rekey(Data) -> {ok, Data} when
@@ -803,6 +813,34 @@ rekey(#quic_data{
     Pkt_Num :: {non_neg_integer(), binary()},
     Encrypted :: binary().
 
+encrypt_packet(short,
+               #quic_data{
+                  type = Type,
+                  crypto = #quic_crypto{
+                              pkt_num_protected_secret = Pkt_Num_Secret,
+                              client_protected_iv = C_IV,
+                              client_protected_key = C_Key,
+                              server_protected_iv = S_IV,
+                              server_protected_key = S_Key
+                             }
+                 } = Data,
+               Header0, Payload, {Pkt_Num, Pkt_Num_Bin}) ->
+
+  {IV, Key} = case Type of
+                server -> {S_IV, S_Key};
+                client -> {C_IV, C_Key}
+              end,
+
+  Nonce = get_nonce(IV, Pkt_Num),
+  
+  %% Encrypt the Packet
+  {Enc_Frames, Tag} = encrypt(Payload, Key, Nonce, <<Header0/binary, Pkt_Num_Bin/binary>>),
+  
+  %% Encode the packet number
+  Enc_Pkt_Num = encrypt_pkt_num(Pkt_Num_Bin, Pkt_Num_Secret, Tag),
+
+  {ok, Data, <<Header0/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>};
+
 encrypt_packet(initial,
                #quic_data{
                   type = Type,
@@ -866,34 +904,6 @@ encrypt_packet(handshake,
   
   {ok, Data, <<Header0/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>};
   
-encrypt_packet(short,
-               #quic_data{
-                  type = Type,
-                  crypto = #quic_crypto{
-                              pkt_num_protected_secret = Pkt_Num_Secret,
-                              client_protected_iv = C_IV,
-                              client_protected_key = C_Key,
-                              server_protected_iv = S_IV,
-                              server_protected_key = S_Key
-                             }
-                 } = Data,
-               Header0, Payload, {Pkt_Num, Pkt_Num_Bin}) ->
-
-  {IV, Key} = case Type of
-                server -> {S_IV, S_Key};
-                client -> {C_IV, C_Key}
-              end,
-
-  Nonce = get_nonce(IV, Pkt_Num),
-  
-  %% Encrypt the Packet
-  {Enc_Frames, Tag} = encrypt(Payload, Key, Nonce, <<Header0/binary, Pkt_Num_Bin/binary>>),
-  
-  %% Encode the packet number
-  Enc_Pkt_Num = encrypt_pkt_num(Pkt_Num_Bin, Pkt_Num_Secret, Tag),
-
-  {ok, Data, <<Header0/binary, Enc_Pkt_Num/binary, Tag/binary, Enc_Frames/binary>>};
-
 %% Encrypts early 0-RTT data for the client.
 encrypt_packet(early_data,
                #quic_data{
@@ -1348,8 +1358,7 @@ shared_secret(Other_Pub_Key, Priv_Key) ->
             finished,
     Data :: #quic_data{},
     Result :: {ok, Crypto_Data},
-    Crypto_Data :: {Type, Offset, binary()},
-    Offset :: non_neg_integer().
+    Crypto_Data :: quic_frame().
 
 form_frame(Crypto_Frame_Type, 
            #quic_data{crypto =
@@ -1359,16 +1368,19 @@ form_frame(Crypto_Frame_Type,
                           }
                      } = Data) ->
   %% Dialyzer does not like Frame = Crypto_Frame_Type(Data),
-  Crypto_Data = 
+  {Offset, Binary} = 
     case Crypto_Frame_Type of
-      client_hello -> {Crypto_Frame_Type, Init_Send, client_hello(Data)};
-      server_hello -> {Crypto_Frame_Type, Init_Send, server_hello(Data)};
-      encrypted_exts -> {Crypto_Frame_Type, Hand_Send, encrypted_exts(Data)};
-      certificate -> {Crypto_Frame_Type, Hand_Send, certificate(Data)};
-      cert_verify -> {Crypto_Frame_Type, Hand_Send, cert_verify(Data)};
-      finished -> {Crypto_Frame_Type, Hand_Send, finished(Data)}
+      client_hello -> {Init_Send, client_hello(Data)};
+      server_hello -> {Init_Send, server_hello(Data)};
+      encrypted_exts -> {Hand_Send, encrypted_exts(Data)};
+      certificate -> {Hand_Send, certificate(Data)};
+      cert_verify -> {Hand_Send, cert_verify(Data)};
+      finished -> {Hand_Send, finished(Data)}
     end,
-
+  Crypto_Data = #{type => crypto,
+                  crypto_type => Crypto_Frame_Type,
+                  offset => Offset,
+                  binary => Binary},
   {ok, Crypto_Data}.
 
 %% The lengths on the client hello, server hello, encrypted extensions need to be

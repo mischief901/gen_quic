@@ -1,21 +1,19 @@
 %%%-------------------------------------------------------------------
-%%% @author alex <alex@alex-Lenovo>
+%%% @author alex
 %%% @copyright (C) 2018, alex
 %%% @doc
 %%%
 %%% @end
-%%% Created : 16 May 2018 by alex <alex@alex-Lenovo>
 %%%-------------------------------------------------------------------
--module(quic_frame_vx_1).
+-module(quic_encoder_vx_1).
 
 %% API
-%-export([to_frame/1]).
+-export([to_frame/1]).
 -export([to_app_error/1, to_conn_error/1]).
 
 -include("quic_headers.hrl").
 -include("quic_vx_1.hrl").
 
--compile(inline).
 
 %%%===================================================================
 %%% API
