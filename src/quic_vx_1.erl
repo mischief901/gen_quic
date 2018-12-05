@@ -24,7 +24,7 @@
     Frames :: [Frame],
     Ack_Frames :: [Frame],
     Frame :: quic_frame(),
-    TLS_Info :: #tls_record{},
+    TLS_Info :: binary(),
     Reason :: gen_quic:error().
 
 parse_frames(Payload) ->
@@ -47,7 +47,7 @@ form_frame(Frame_Info) ->
             early_data |
             handshake |
             short,
-    Data :: #quic_data{},
+    Data :: quic_data(),
     Frames :: [Frame],
     Frame :: quic_frame(),
     Result :: {ok, Data, Header, Payload, Pkt_Num} | {error, Reason},
@@ -57,6 +57,7 @@ form_frame(Frame_Info) ->
     Reason :: gen_quic:error().
 
 form_packet(Type, Data, Frames) ->
+  io:format("Frames: ~p~n", [Frames]),
   Payload = lists:foldl(fun(#{binary := Bin}, <<Acc/binary>>) ->
                             <<Acc/binary, Bin/binary>> end,
                         <<>>, Frames),
@@ -67,7 +68,7 @@ form_packet(Type, Data, Frames) ->
             early_data |
             handshake |
             short,
-    Data :: #quic_data{},
+    Data :: quic_data(),
     Payload :: binary(),
     Result :: {error, Reason} |
               {ok, Data, Header, Payload, Pkt_Num},
@@ -75,19 +76,15 @@ form_packet(Type, Data, Frames) ->
     Pkt_Num :: {non_neg_integer(), binary()},
     Reason :: gen_quic:error().
 
-form_header(initial,
-            #quic_data{
-               conn = #quic_conn{
-                         src_conn_ID = Src_ID,
-                         dest_conn_ID = Dest_ID
-                        },
-               version = #quic_version{
-                            negotiated_version = Version
-                           },
-               pkt_nums = #{initial := {Pkt_Num, _, _} = Num_Range},
-               retry_token = Retry_Token
-              } = Data,
+form_header(initial, #{conn := #{src_conn_ID := Src_ID,
+                                 dest_conn_ID := Dest_ID
+                                },
+                       version := #{initial_version := Version
+                                   },
+                       pkt_nums := #{initial := {Pkt_Num, _, _} = Num_Range}
+                      } = Data,
             Payload) ->
+  Retry_Token = maps:get(retry_token, Data, <<>>),
 
   Pkt_Num_Length = quic_utils:packet_num_send_length(Num_Range),
   Length = quic_utils:to_var_length(byte_size(Payload) + Pkt_Num_Length),
@@ -103,17 +100,12 @@ form_header(initial,
              Length/binary>>,
   {ok, Data, Header, Payload, {Pkt_Num, Pkt_Num_Bin}};
 
-form_header(handshake,
-            #quic_data{
-               conn = #quic_conn{
-                         src_conn_ID = Src_ID,
-                         dest_conn_ID = Dest_ID
-                        },
-               version = #quic_version{
-                            negotiated_version = Version
-                           },
-               pkt_nums = #{handshake := {Pkt_Num, _, _} = Num_Range}
-              } = Data,
+form_header(handshake, #{conn := #{src_conn_ID := Src_ID,
+                                   dest_conn_ID := Dest_ID
+                                  },
+                         version := #{negotiated_version := Version},
+                         pkt_nums := #{handshake := {Pkt_Num, _, _} = Num_Range}
+                        } = Data,
             Payload) ->
   Pkt_Num_Length = quic_utils:packet_num_send_length(Num_Range),
   Length = quic_utils:to_var_length(byte_size(Payload) + Pkt_Num_Length),
@@ -127,17 +119,12 @@ form_header(handshake,
              Dest_ID/binary, Src_ID/binary, Length/binary>>,
   {ok, Data, Header, Payload, {Pkt_Num, Pkt_Num_Bin}};
   
-form_header(early_data,
-            #quic_data{
-               conn = #quic_conn{
-                         src_conn_ID = Src_ID,
-                         dest_conn_ID = Dest_ID
-                        },
-               version = #quic_version{
-                            negotiated_version = Version
-                           },
-               pkt_nums = #{protected := {Pkt_Num, _, _} = Num_Range}
-              } = Data,
+form_header(early_data, #{conn := #{src_conn_ID := Src_ID,
+                                    dest_conn_ID := Dest_ID
+                                   },
+                          version := #{negotiated_version := Version},
+                          pkt_nums := #{protected := {Pkt_Num, _, _} = Num_Range}
+                         } = Data,
             Payload) ->
   Pkt_Num_Length = quic_utils:packet_num_send_length(Num_Range),
   Length = quic_utils:to_var_length(byte_size(Payload) + Pkt_Num_Length),
@@ -152,13 +139,9 @@ form_header(early_data,
   {ok, Data, Header, Payload, {Pkt_Num, Pkt_Num_Bin}};
 
 %% TODO: Add key-phase to short packets.
-form_header(short,
-            #quic_data{
-               conn = #quic_conn{
-                         dest_conn_ID = Dest_ID
-                        },
-               pkt_nums = #{protected := {Pkt_Num, _, _}}
-              } = Data,
+form_header(short, #{conn := #{dest_conn_ID := Dest_ID},
+                     pkt_nums := #{protected := {Pkt_Num, _, _}}
+                    } = Data,
             Payload) ->
 
   Pkt_Num_Bin = quic_utils:to_var_pkt_num(Pkt_Num),

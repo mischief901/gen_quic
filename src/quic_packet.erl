@@ -32,7 +32,7 @@
 %% Otherwise returns the length of the payload and header.
 -spec parse_header(Raw_Packet, Data) -> Result when
     Raw_Packet :: binary(),
-    Data :: #quic_data{},
+    Data :: quic_data(),
     Result :: {ok, Data, Header_Info} |
               {ok, Data} |
               {error, Reason},
@@ -55,11 +55,8 @@
 
 parse_header(<<1:1, _Type:7, 0:32, DCIL:4, SCIL:4,
                Rest/binary>>,
-             #quic_data{
-                conn = #quic_conn{
-                          src_conn_ID = Dest_Conn,
-                          dest_conn_ID = Src_Conn
-                         }
+             #{conn := #{src_conn_ID := Dest_Conn,
+                         dest_conn_ID := Src_Conn}
                } = Data) ->
   %% Version Negotiation Packet
   %% Make sure the packet has the correct source and destination connection id's.
@@ -81,14 +78,9 @@ parse_header(<<1:1, _Type:7, 0:32, DCIL:4, SCIL:4,
   end;
 
 parse_header(<<1:1, 16#7e:7, Version:4/binary, DCIL:4, SCIL:4, Rest/binary>>,
-             #quic_data{
-                version = #quic_version{
-                             initial_version = Version
-                            },
-                conn = #quic_conn{
-                          dest_conn_ID = Dest_Conn,
-                          src_conn_ID = Src_Conn
-                         }
+             #{version := #{initial_version := Version},
+                conn := #{dest_conn_ID := Dest_Conn,
+                          src_conn_ID := Src_Conn}
                } = Data0) ->
   %% Retry packet
   %% First get the DCIL and SCIL lengths
@@ -116,38 +108,7 @@ parse_header(<<0:1, Type:7/bits, Rest/binary>>, Data) ->
   parse_short_header(Rest, Data, Type, 1).
 
 parse_long_header(<<DCIL:4, SCIL:4, Rest/binary>>,
-                  #quic_data{
-                     version = #quic_version{
-                                  initial_version = undefined,
-                                  negotiated_version = undefined
-                                 } = Vx
-                    } = Data0,
-                  16#7f, Version, Header_Length) ->
-  %% Initial packet. Need to check if the version is supported
-  Dest_Len = quic_utils:from_conn_length(DCIL),
-  Src_Len = quic_utils:from_conn_length(SCIL),
-
-  case quic_vxx:supported(Version) of
-    {ok, {Module, Version}} ->
-      Data = Data0#quic_data{
-               version = Vx#quic_version{
-                           initial_version = Version,
-                           negotiated_version = Version
-                          },
-               vx_module = Module
-              },
-      parse_conns(Rest, Data, initial, {Dest_Len, Src_Len}, Header_Length + 1);
-    
-    {error, unsupported} ->
-      parse_conns(Rest, Data0, unsupported, {Dest_Len, Src_Len}, unsupported)
-
-  end;
-
-parse_long_header(<<DCIL:4, SCIL:4, Rest/binary>>,
-                  #quic_data{
-                     version = #quic_version{
-                                  negotiated_version = Version
-                                 }
+                  #{version := #{negotiated_version := Version}
                     } = Data,
                   Type_Num, Version, Header_Length) ->
   %% The versions match so continue.
@@ -163,13 +124,37 @@ parse_long_header(<<DCIL:4, SCIL:4, Rest/binary>>,
   
   parse_conns(Rest, Data, Type, {Dest_Len, Src_Len}, Header_Length + 1);
 
+parse_long_header(<<DCIL:4, SCIL:4, Rest/binary>>,
+                  Data0,
+                  16#7f, Version, Header_Length) ->
+  %% Initial packet. Need to check if the version is supported
+  Dest_Len = quic_utils:from_conn_length(DCIL),
+  Src_Len = quic_utils:from_conn_length(SCIL),
+
+  io:format("Checking Version: ~p~n", [Version]),
+
+  case quic_vxx:supported(Version) of
+    {ok, {Module, Version}} ->
+      Data = Data0#{version => #{initial_version => Version,
+                                 negotiated_version => Version
+                                },
+                    vx_module => Module
+                   },
+      io:format("Header ln 143: ~p~n", [Header_Length]),
+      parse_conns(Rest, Data, initial, {Dest_Len, Src_Len}, Header_Length + 1);
+    
+    {error, unsupported} ->
+      parse_conns(Rest, Data0, unsupported, {Dest_Len, Src_Len}, unsupported)
+
+  end;
+
 parse_long_header(_, _, _, _, _) ->
   io:format(standard_error, "\tInvalid Version received in header.~n", []),
   {error, invalid_header}.
 
 
 parse_short_header(<<Header/binary>>, 
-                   #quic_data{conn = #quic_conn{src_conn_ID = Dest_Conn}} = Data,
+                   #{conn := #{src_conn_ID := Dest_Conn}} = Data,
                    Type, Header_Length) ->
   %% Type flags to be implemented.
   Dest_Len = quic_utils:to_conn_length(Dest_Conn),
@@ -183,31 +168,19 @@ parse_short_header(<<Header/binary>>,
       {error, invalid_header}
   end.
 
-                   
+
 parse_conns(<<Rest/binary>>, 
-            #quic_data{conn = Conn} = Data0, 
+            #{conn := Conn} = Data0, 
             unsupported, {Dest_Len, Src_Len}, unsupported) ->
   <<Dest_Conn:Dest_Len/binary, Src_Conn:Src_Len/binary, _Unused>> = Rest,
   
-  Data = Data0#quic_data{conn = Conn#quic_conn{dest_conn_ID = Dest_Conn,
-                                               src_conn_ID = Src_Conn}},
+  Data = Data0#{conn := Conn#{dest_conn_ID => Dest_Conn,
+                              src_conn_ID => Src_Conn}},
   {unsupported, Data};
 
 parse_conns(<<Header/binary>>,
-            #quic_data{conn = #quic_conn{dest_conn_ID = undefined,
-                                         src_conn_ID = undefined} = Conn0
-                      } = Data0,
-            initial, {Dest_Len, Src_Len}, Header_Length) ->
-  <<Dest_Conn:Dest_Len/binary, Src_Conn:Src_Len/binary, Token_Length_Flag:2, Rest/bits>> = Header,
-  Data = Data0#quic_data{conn = Conn0#quic_conn{dest_conn_ID = Src_Conn,
-                                                src_conn_ID = Dest_Conn}},
-  
-  Token_Length = quic_utils:from_var_length(Token_Length_Flag),
-  parse_token(Rest, Data, initial, Token_Length, Header_Length + Dest_Len + Src_Len);
-
-parse_conns(<<Header/binary>>,
-            #quic_data{conn = #quic_conn{dest_conn_ID = Src_Conn,
-                                         src_conn_ID = Dest_Conn}} = Data,
+            #{conn := #{dest_conn_ID := Src_Conn,
+                        src_conn_ID := Dest_Conn}} = Data,
             initial, {Dest_Len, Src_Len}, Header_Length) ->
   case Header of
     <<Dest_Conn:Dest_Len/binary, Src_Conn:Src_Len/binary, Token_Length_Flag:2, Rest/bits>> ->
@@ -220,8 +193,8 @@ parse_conns(<<Header/binary>>,
   end;
 
 parse_conns(<<Header/bits>>,
-           #quic_data{conn = #quic_conn{dest_conn_ID = Dest_Conn,
-                                        src_conn_ID = Src_Conn}} = Data,
+           #{conn := #{dest_conn_ID := Dest_Conn,
+                       src_conn_ID := Src_Conn}} = Data,
             Type, {Dest_Len, Src_Len}, Header_Length) ->
   case Header of
     <<Dest_Conn:Dest_Len/binary, Src_Conn:Src_Len/binary, Length_Flag:2, Rest/bits>> ->
@@ -231,11 +204,21 @@ parse_conns(<<Header/bits>>,
     _Wrong_Conns ->
       io:format(standard_error, "\tWrong Conn received with packet.~n", []),
       {error, invalid_initial}
-  end.
+  end;
+
+parse_conns(<<Header/binary>>,
+            #{conn := Conn0} = Data0,
+            initial, {Dest_Len, Src_Len}, Header_Length) ->
+  <<Dest_Conn:Dest_Len/binary, Src_Conn:Src_Len/binary, Token_Length_Flag:2, Rest/bits>> = Header,
+  Data = Data0#{conn := Conn0#{dest_conn_ID => Src_Conn,
+                               src_conn_ID => Dest_Conn}},  
+  Token_Length = quic_utils:from_var_length(Token_Length_Flag),
+  parse_token(Rest, Data, initial, Token_Length, Header_Length + Dest_Len + Src_Len).
 
 parse_token(<<Header/bits>>, Data, initial, Token_Length_Len, Header_Length) ->
   <<Token_Len:Token_Length_Len, Rest/bits>> = Header,
-  parse_token_(Rest, Data, initial, Token_Len, Header_Length + Token_Length_Len).
+  Length_Bytes = (Token_Length_Len + 2) div 8,
+  parse_token_(Rest, Data, initial, Token_Len, Header_Length + Length_Bytes).
 
 parse_token_(<<Header/bits>>, Data, initial, Token_Len, Header_Length) ->
   
@@ -245,35 +228,33 @@ parse_token_(<<Header/bits>>, Data, initial, Token_Len, Header_Length) ->
 
 parse_length(<<Header/bits>>, Data, Type, Length_Length, Header_Length) ->
   <<Length:Length_Length, _Rest/binary>> = Header,
+  Length_Bytes = (Length_Length + 2) div 8,
   case Type of
     {initial, Token} ->
-      {ok, Data, {initial, Token, Length, Header_Length + Length_Length}};
+      {ok, Data, {initial, Token, Length, Header_Length + Length_Bytes}};
 
     _Other ->
-      {ok, Data, {Type, Length, Header_Length + Length_Length}}
+      {ok, Data, {Type, Length, Header_Length + Length_Bytes}}
   end.
 
 
 -spec parse_frames(Payload, Data) -> Result when
     Payload :: binary(),
-    Data :: #quic_data{},
-    Result :: {ok, Data, Frames, Acks, TLS_Info} |
+    Data :: quic_data(),
+    Result :: {ok, Data, Frames, Acks, TLS_Frame} |
               {error, Reason},
     Frames :: [quic_frame()],
     Acks :: [quic_frame()],
-    TLS_Info :: #tls_record{},
+    TLS_Frame :: binary(),
     Reason :: gen_quic:error().
 
 parse_frames(<<Payload/binary>>, 
-             #quic_data{
-                vx_module = Module
-               }) ->
-
+             #{vx_module := Module}) ->
   Module:parse_frames(Payload).
 
 
 -spec form_packet(vx_neg, Data) -> Result when
-    Data :: #quic_data{},
+    Data :: quic_data(),
     Result :: {ok, Data, Packet} | {error, Reason},
     Packet :: binary(),
     Reason :: gen_quic:error().
@@ -283,15 +264,11 @@ parse_frames(<<Payload/binary>>,
 %% this creates a vx_neg packet from the supported_versions list in version.
 %% For retry packets the initial version is used.
 form_packet(vx_neg, 
-            #quic_data{
-               conn = #quic_conn{
-                         dest_conn_ID = Dest_Conn,
-                         src_conn_ID = Src_Conn
-                        },
-               version = #quic_version{
-                            supported_versions = Versions
-                           }
-              } = Data) ->
+            #{conn := #{dest_conn_ID := Dest_Conn,
+                       src_conn_ID := Src_Conn
+                       },
+              version := #{supported_versions := Versions}
+             } = Data) ->
   <<_:1, Rand:7>> = crypto:strong_rand_bytes(1),
   Version = <<0:4/unit:8>>,
   Dest_Len = quic_utils:to_conn_length(Dest_Conn),
@@ -309,7 +286,7 @@ form_packet(vx_neg,
             early_data |
             handshake |
             short,
-    Data :: #quic_data{},
+    Data :: quic_data(),
     Frames :: [quic_frame()] | New_Conn_Id,
     New_Conn_Id :: binary(),
     Result :: {ok, Data, Header, Payload, Pkt_Num} | {error, Reason},
@@ -323,20 +300,13 @@ form_packet(vx_neg,
 %% has only the information normally sent then.
 %% Same for the handshake packets.
 form_packet(Type,
-            #quic_data{
-               version = #quic_version{
-                            negotiated_version = Version
-                           },
-               vx_module = undefined
-              } = Data0,
+            #{version := #{negotiated_version := Version},
+              vx_module := undefined
+             } = Data0,
             Frames) ->
   case quic_vxx:supported(Version) of
     {ok, {Module, Version}} ->
-
-      Data = Data0#quic_data{
-               vx_module = Module
-              },
-      
+      Data = Data0#{vx_module := Module},
       Module:form_packet(Type, Data, Frames);
     
     {error, unsupported} ->
@@ -347,32 +317,24 @@ form_packet(Type,
   end;
 
 %% The version_module is already known at this point so we don't need to look it up
-form_packet(Type,
-            #quic_data{
-               vx_module = Module
-              } = Data,
-            Frames) ->
+form_packet(Type, #{vx_module := Module} = Data, Frames) ->
   Module:form_packet(Type, Data, Frames).
 
 
 -spec form_packet(retry, Data, New_Dest_Conn, Token) -> {ok, Data, Packet} when
-    Data :: #quic_data{},
+    Data :: quic_data(),
     New_Dest_Conn :: binary(),
     Token :: binary(),
     Packet :: binary().
 
-form_packet(retry,
-            #quic_data{
-               type = server,
-               conn = #quic_conn{
-                         dest_conn_ID = Old_Dest_Conn,
-                         src_conn_ID = Src_Conn
-                        } = Conn0,
-               version = #quic_version{
-                            initial_version = Vx_Init,
-                            negotiated_version = Vx_Neg
-                           }
-              } = Data0, New_Dest_Conn, Token) ->
+form_packet(retry, #{type := server,
+                     conn := #{dest_conn_ID := Old_Dest_Conn,
+                               src_conn_ID := Src_Conn
+                              } = Conn0,
+                     version := #{initial_version := Vx_Init,
+                                  negotiated_version := Vx_Neg
+                                 }
+                    } = Data0, New_Dest_Conn, Token) ->
   Version = case Vx_Neg of
               undefined -> Vx_Init;
               _ -> Vx_Neg
@@ -384,8 +346,8 @@ form_packet(retry,
   Packet = <<1:1, 16#7e:7, Version/binary, Dest_Len:4, Src_Len:4, New_Dest_Conn/binary,
              Src_Conn/binary, Rand:4, Old_Dest_Len:4, Old_Dest_Conn/binary,
              Token/binary>>,
-  Data = Data0#quic_data{conn = Conn0#quic_conn{dest_conn_ID = New_Dest_Conn},
-                         retry_token = Token},
+  Data = Data0#{conn := Conn0#{dest_conn_ID := New_Dest_Conn},
+                retry_token := Token},
   {ok, Data, Packet}.
 
 
@@ -396,10 +358,9 @@ form_packet(retry,
               {error, Reason},
     Reason :: gen_quic:frame_error().
 
-
-form_frame(_, #{}) ->
-  %% Nothing to form so return an empty frame.
-  {ok, #{type => empty, binary => <<>>}};
+%% form_frame(_, #{}) ->
+%%   %% Nothing to form so return an empty frame.
+%%   {ok, #{type => empty, binary => <<>>}};
 
 form_frame(Version, Frame_Info) when is_binary(Version) ->
   {ok, {Module, Version}} = quic_vxx:supported(Version),

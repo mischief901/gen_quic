@@ -82,16 +82,17 @@ register_conn_id(Socket, Conn_ID) ->
     Socket :: gen_quic:socket().
 
 unregister_name(Socket) ->
-  case ets:lookup_element(?TABLE, Socket, 3) of
-    #{} ->
-      %% If the stream map is empty, then remove it.
-      ets:delete(?TABLE, Socket),
-      ok;
-    _ ->
-      %% Otherwise there are existing streams and an error has to be thrown. (for now).
-      %% This should probably tell all the streams and balancer to close instead with an internal error.
-      erlang:error("Socket cannot be closed when streams are still open", Socket)
-  end.
+  ets:delete(?TABLE, Socket).
+  %% case ets:lookup_element(?TABLE, Socket, 3) of
+  %%   #{} ->
+  %%     %% If the stream map is empty, then remove it.
+  %%     ets:delete(?TABLE, Socket),
+  %%     ok;
+  %%   _ ->
+  %%     %% Otherwise there are existing streams and an error has to be thrown. (for now).
+  %%     %% This should probably tell all the streams and balancer to close instead with an internal error.
+  %%     erlang:error("Socket cannot be closed when streams are still open", Socket)
+  %% end.
 
 
 -spec unregister_stream(Stream) -> ok when

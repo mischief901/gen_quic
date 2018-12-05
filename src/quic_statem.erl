@@ -32,45 +32,44 @@ callback_mode() -> handle_event_function.
 
 -spec init([Args]) -> Result when
     Args :: Data | Options,
-    Data :: #quic_data{},
-    Options :: [Option],
-    Option :: gen_quic:option(),
+    Data :: quic_data(),
+    Options :: map(),
     Result :: {ok, {initial, Type}, Data},
     Type :: client | server.
 
-init([#quic_data{
-         type = Type
-        } = Data0, Quic_Opts]) ->
+init([#{type := Type} = Data0, Quic_Opts]) ->
   io:format("Initializing Crypto.~n"),
   {ok, Data1} = quic_crypto:default_params(Data0, Quic_Opts),
   Staging_Priority = maps:get(packing_priority, Quic_Opts, none),
   {ok, Data2} = quic_staging:init(Data1, Staging_Priority),
   io:format("Staging Initialized.~n"),
-  {ok, Data3} = quic_crypto:crypto_init(Data2),
-  io:format("Connection Initialized.~n"),
-  {ok, {initial, Type}, Data3}.
+  case Type of
+    server ->
+      {ok, {initial, Type}, Data2};
+    client ->
+      {ok, Data3} = quic_crypto:crypto_init(Data2),
+      {ok, Data4} = quic_crypto:rekey(Data3),
+      {ok, {initial, Type}, Data4}
+  end.
 
 
 handle_event({call, From}, {connect, Address, Port, Timeout}, {initial, client},
-             #quic_data{conn = 
-                          #quic_conn{
-                             socket = Socket
-                            } = Conn0
-                       } = Data0) ->
+             #{conn := #{socket := Socket} = Conn0
+              } = Data0) ->
   %% Only the client can call connect.  
   ok = inet:setopts(Socket, [{active, true}]),
 
   gen_statem:cast(self(), {send_handshake, client_hello}),
-  Data = Data0#quic_data{conn = Conn0#quic_conn{address = Address,
-                                                port = Port,
-                                                owner = From}},
+  Data = Data0#{conn := Conn0#{address => Address,
+                               port => Port,
+                               owner => From}},
   {keep_state, Data, [{{timeout, handshake}, Timeout, {error, timeout}}]};
 
 handle_event({call, From}, {accept, LSocket, Timeout}, {initial, server}, 
-             #quic_data{conn = Conn0} = Data0) ->
+             #{conn := Conn0} = Data0) ->
   %% Only the server can call accept.
   gen_statem:cast(self(), {accept, LSocket}),
-  Data = Data0#quic_data{conn = Conn0#quic_conn{owner = From}},
+  Data = Data0#{conn := Conn0#{owner => From}},
 
   {keep_state, Data, {{timeout, handshake}, Timeout, {error, timeout}}};
 
@@ -79,28 +78,27 @@ handle_event(cast, connect, {initial, client}, Data0) ->
   {keep_state, Data};
 
 handle_event(cast, {accept, LSocket}, {initial, server},
-             #quic_data{conn = Conn0} = Data0) ->
+             #{conn := Conn0} = Data0) ->
 
-  case prim_inet:recv(LSocket, 1, 50) of
+  case prim_inet:recvfrom(LSocket, 0, 50) of
     {error, timeout} ->
       %% Nothing received so repeat state and event.
       gen_statem:cast(self(), {accept, LSocket}),
       keep_state_and_data;
-    
+
     {ok, {IP, Port, Packet}} ->
       %% Received a packet. Parse the header to get the initial crypto info.
-      Conn = Conn0#quic_conn{
-               address = IP,
-               port = Port
-              },
-      
-      case decrypt_and_parse_packet(Data0#quic_data{conn = Conn}, Packet, 0) of
+      Conn = Conn0#{address => IP,
+                    port => Port
+                   },
+
+      case decrypt_and_parse_packet(Data0#{conn := Conn}, Packet, 0) of
         {error, invalid_initial} ->
           %% Send a retry packet back.
           %% TODO: Figure out how to do that.
           gen_statem:cast(self(), {accept, LSocket}),
           keep_state_and_data;
-        
+
         {ok, Data} ->
           %% The accept will be ignored if the initial packet validates and
           %% the statem trasitions to the handshake state.
@@ -152,7 +150,7 @@ handle_event(cast, {handle_crypto, initial, <<>>, TLS_Info}, {initial, client},
   validate_and_reply(initial, TLS_Info, Data);
 
 handle_event(cast, {handle_crypto, initial, Token, TLS_Info}, {initial, server},
-             #quic_data{retry_token = Token} = Data) ->
+             #{retry_token := Token} = Data) ->
   %% The Tokens match so perform a crypto step.
   validate_and_reply(initial, TLS_Info, Data);
 
@@ -200,12 +198,12 @@ handle_event(cast, {handle_acks, Crypto_Range, Ack_Frames}, {State, Type}, Data0
     {New_State, Data} ->
       %% Transitions from slow_start to avoidance.
       {next_state, {New_State, Type}, Data};
-    
+
     {recovery, Data, Event} ->
       {next_state, {recovery, Type}, Data, {next_event, internal, {congestion_event, Event}}}
   end;
 
-handle_event(cast, {send, Frame}, {State, Type}, Data0) ->
+handle_event(cast, {send, Frame}, {_State, _Type}, Data0) ->
   {ok, Data1} = quic_staging:enstage(Data0, Frame),
   {keep_state, Data1};
 
@@ -235,26 +233,22 @@ handle_event(internal, rekey, _State, Data0) ->
   {keep_state, Data};
 
 handle_event(internal, success, {_State, Type},
-             #quic_data{conn = #quic_conn{owner = Owner,
-                                          socket = Socket}} = Data) when is_pid(Owner) ->
+             #{conn := #{owner := Owner,
+                         socket := Socket}} = Data) when is_pid(Owner) ->
   %% Cancel the timer for the handshake (set it to infinity).
   %% Reply to the owner with {ok, Socket} to indicate the connection is successful.
   {next_state, {slow_start, Type}, Data, [{{timeout, handshake}, infinity, none}, 
                                           {reply, Owner, {ok, Socket}}]};
 
 handle_event(info, {udp, Socket, Address, Port, Packet}, {initial, client},
-             #quic_data{
-                conn = #quic_conn{
-                          socket = Socket,
-                          address = _Old_Address,
-                          port = _Old_Port
-                         } = Conn0
-               } = Data0) ->
+             #{conn := #{socket := Socket,
+                         address := _Old_Address,
+                         port := _Old_Port
+                        } = Conn0
+              } = Data0) ->
   %% The ip address and port could change as the server opens an accept socket.
-  Data1 = Data0#quic_data{
-            conn = Conn0#quic_conn{
-                     address = Address,
-                     port = Port}},
+  Data1 = Data0#{conn := Conn0#{address := Address,
+                                port := Port}},
 
   case decrypt_and_parse_packet(Data1, Packet, 0) of
     {ok, Data} ->
@@ -266,13 +260,10 @@ handle_event(info, {udp, Socket, Address, Port, Packet}, {initial, client},
   end;
 
 handle_event(info, {udp, Socket, Address, Port, Packet}, _State,
-             #quic_data{
-                conn = #quic_conn{
-                          socket = Socket,
-                          address = Address,
-                          port = Port
-                         }
-               } = Data0) ->
+             #{conn := #{socket := Socket,
+                         address := Address,
+                         port := Port}
+              } = Data0) ->
   case decrypt_and_parse_packet(Data0, Packet, 0) of
     {ok, Data} ->
       {keep_state, Data};
@@ -282,7 +273,7 @@ handle_event(info, {udp, Socket, Address, Port, Packet}, _State,
   end;
 
 handle_event(internal, {protocol_violation, Reason}, _State, 
-             #quic_data{conn = #quic_conn{owner = Owner}} = Data) ->
+             #{conn := #{owner := Owner}} = Data) ->
   %% This function is the same across all states
   %% The connection is severed when there is a protocol violation and the owner is
   %% notified.
@@ -312,18 +303,18 @@ validate_and_reply(Packet_Level, TLS_Info, Data0) ->
   case quic_crypto:validate_tls(Data0, TLS_Info) of
     {invalid, Reason} ->
       {keep_state_and_data, {next_event, internal, {protocol_violation, Reason}}};
-        
+
     {valid, Data1} ->
       %% Send back an ack in the correct packet range.
       Data2 = send_and_form_packet(Packet_Level, Data1),
-      
+
       {keep_state, Data2, [{next_event, internal, rekey}, 
                            {next_event, internal, continue_handshake}]};
-    
+
     {incomplete, Data1} ->
       %% When all the information to proceed to the next state is not received yet.
       {keep_state, Data1};
-    
+
     out_of_order ->
       %% Re-cast it to itself in order to handle it in order.
       gen_statem:cast(self(), {handle_crypto, Packet_Level, TLS_Info}),
@@ -338,6 +329,6 @@ decrypt_and_parse_packet(Data, Packet, Attempt) ->
   quic_conn:decrypt_and_parse_packet(Data, Packet, Attempt).
 
 handle_frames(Data0, Frames) when is_list(Frames) ->
-  Data = lists:foldl(fun(Acc, Frame) -> quic_conn:handle_frame(Acc, Frame) end, 
-                     Data0, Frames).
+  lists:foldl(fun(Acc, Frame) -> quic_conn:handle_frame(Acc, Frame) end, 
+              Data0, Frames).
 

@@ -42,16 +42,20 @@
 
 connect(Address, Port, Opts, Timeout) ->
   {ok, Quic_Opts, Udp_Opts} = inet_quic_util:parse_opts(Opts),
-  {ok, Socket} = inet_udp:open(0, [{active, false} | Udp_Opts]),
+  {ok, Socket} = inet_udp:open(0, [{active, false}, binary | Udp_Opts]),
 
-  Data = #quic_data{
-            type = client,
-            vx_module = quic_vx_1,
-            conn = #quic_conn{
-                      socket = Socket,
-                      owner = self()
-                     }
-           },
+  Crypto = quic_crypto:default_crypto(),
+  Data = #{type => client,
+           vx_module => quic_vx_1,
+           version => #{initial_version => <<1:32>>},
+           conn => #{socket => Socket,
+                     owner => self()
+                    },
+           pkt_nums => #{initial => {0, 0, 0},
+                         handshake => {0, 0, 0},
+                         application => {0, 0, 0}},
+           crypto => Crypto
+          },
   io:format("Starting connection.~n"),
   %% TODO: Move this to a wrapper function in quic_statem.
   {ok, Pid} = gen_statem:start_link(via(Socket), quic_statem,
@@ -75,7 +79,7 @@ connect(Address, Port, Opts, Timeout) ->
 
 listen(Port, Opts) ->
   {ok, _, Udp_Opts} = inet_quic_util:parse_opts(Opts),
-  inet_udp:open(Port, Udp_Opts).
+  inet_udp:open(Port, [{active, false}, binary | Udp_Opts]).
 
 
 -spec accept(LSocket, Timeout, Options) -> Result when
@@ -93,15 +97,19 @@ accept(LSocket, Timeout, Opts) ->
 
   %% This socket should remain active. 
   %% parse_opts filters out any user-given active options.
-  {ok, Socket} = inet_udp:open([{active, true} | Udp_Opts]),
+  {ok, Socket} = inet_udp:open(0, [{active, true}, binary | Udp_Opts]),
   
-  Data = #quic_data{
-            type = server,
-            conn = #quic_conn{
-                      socket = Socket,
-                      owner = self()
-                     }
-           },
+  Crypto = quic_crypto:default_crypto(),
+  Data = #{type => server,
+           vx_module => quic_vx_1,
+           conn => #{socket => Socket,
+                     owner => self()
+                    },
+           pkt_nums => #{initial => {0, 0, 0},
+                         handshake => {0, 0, 0},
+                         application => {0, 0, 0}},
+           crypto => Crypto
+          },
 
   %% TODO: Move this to a wrapper function in quic_statem.
   {ok, Pid} = gen_statem:start_link(via(Socket), quic_statem,
@@ -181,10 +189,8 @@ controlling_process(Socket, Pid) ->
     Socket :: gen_quic:socket() | {Socket, Stream_ID},
     Stream_ID :: non_neg_integer().
 
-
 close({_Socket, _Stream_ID} = Stream) ->
   quic_stream:close(Stream);
-
 
 close(Socket) ->
   gen_statem:cast(via(Socket), close).
@@ -246,66 +252,71 @@ via(Socket) ->
 
 %% This function should behave the exact same across both quic_server and quic_client.
 -spec handle_frame(Frame, Data) -> Data when
-    Data  :: #quic_data{},
+    Data  :: quic_data(),
     Frame :: quic_frame().
 
-handle_frame(#{
-               type := stream_data,
+handle_frame(#{type := stream_data,
                stream_id := Stream_ID
               } = Frame,
-             #quic_data{
-                conn = #quic_conn{
-                          socket = Socket
-                         }
-               } = Data) ->
+             #{conn := #{socket := Socket}
+              } = Data) ->
   %% Cast the Stream Frame to the Stream gen_server denoted by {Socket, Stream_ID}.
   gen_server:cast(via({Socket, Stream_ID}), {recv, Frame}),
   Data;
 
-handle_frame(#{
-               type := stream_open,
+handle_frame(#{type := stream_open,
                stream_id := Stream_ID
               } = Frame,
-             #quic_data{
-                conn = #quic_conn{
-                          socket = Socket,
-                          owner = Owner
-                         }
-               } = Data) ->
+             #{conn := #{socket := Socket,
+                         owner := Owner
+                        }
+              } = Data) ->
   ok = stream_balancer:open_stream({Socket, Stream_ID}, Owner, Frame),
   Data;
 
-handle_frame(#{} = _Frame, #quic_data{} = Data) ->
-
+handle_frame(#{} = _Frame, #{} = Data) ->
   Data.
+
 
 -spec send_and_form_packet(Pkt_Type, Data) -> {ok, Data} when
     Pkt_Type :: early_data | short | Handshake_Packet,
     Handshake_Packet :: client_hello | server_hello | encrypted_exts |
                         cert_verify | certificate | finished,
-    Data :: #quic_data{}.
-%% This needs to be modified similar to the decrypt_and_parse_packet function below.
-send_and_form_packet(Pkt_Type,
-                     #quic_data{
-                        cc_info = undefined
-                        } = Data) ->
-  %% congestion_control parameters are not initialized yet
-  io:format("Initializing cc info.~n"),
-  send_and_form_packet(Pkt_Type, quic_cc:congestion_init(Data));
-
-send_and_form_packet(Pkt_Type, 
-                     #quic_data{
-                        timer_info = undefined
-                       } = Data) ->
-  %% timer parameters are not initialized yet
-  io:format("Initializing timer info.~n"),
-  send_and_form_packet(Pkt_Type, quic_cc:timer_init(Data));
-
+    Data :: quic_data().
 send_and_form_packet(Pkt_Type, Data) ->
-  io:format("Forming Packet: ~p~n", [Pkt_Type]),
-  form_ack_frame(Pkt_Type, Data).
+  case {maps:get(cc_info, Data, undefined), maps:get(timer_info, Data, undefined)} of
+    {undefined, undefined} ->
+      %% congestion_control parameters are not initialized yet
+      io:format("Initializing cc info.~n"),
+      Data1 = quic_cc:congestion_init(Data),
+      io:format("Initializing timer info.~n"),
+      Data2 = quic_cc:timer_init(Data1),
+      form_ack_frame(Pkt_Type, Data2);
+    {_, undefined} ->
+      io:format("Initializing timer info.~n"),
+      Data1 = quic_cc:timer_init(Data),
+      form_ack_frame(Pkt_Type, Data1);
+    {undefined, _} ->
+      io:format("Initializing cc info.~n"),
+      Data1 = quic_cc:congestion_init(Data),
+      form_ack_frame(Pkt_Type, Data1);
+    _ ->
+      form_ack_frame(Pkt_Type, Data)
+  end.
 
-form_ack_frame(Pkt_Type, #quic_data{vx_module = Module} = Data0) when 
+%% send_and_form_packet(Pkt_Type, 
+%%                      #{
+%%                        timer_info = undefined
+%%                       } = Data) ->
+%%   %% timer parameters are not initialized yet
+%%   io:format("Initializing timer info.~n"),
+%%   send_and_form_packet(Pkt_Type, quic_cc:timer_init(Data));
+
+%% send_and_form_packet(Pkt_Type, Data) ->
+%%   io:format("Forming Packet: ~p~n", [Pkt_Type]),
+%%   form_ack_frame(Pkt_Type, Data).
+
+form_ack_frame(Pkt_Type, #{vx_module := Module} = Data0) when 
     Pkt_Type == short;
     Pkt_Type == early_data ->
   %% Acks must be in the same crypto range as the packet.
@@ -313,7 +324,7 @@ form_ack_frame(Pkt_Type, #quic_data{vx_module = Module} = Data0) when
   {ok, Ack_Frame} = quic_packet:form_frame(Module, Ack_Info),
   form_frames(Pkt_Type, Data1, Ack_Frame);
 
-form_ack_frame(Pkt_Type, #quic_data{vx_module = Module} = Data0) when 
+form_ack_frame(Pkt_Type, #{vx_module := Module} = Data0) when 
     Pkt_Type =:= client_hello;
     Pkt_Type =:= server_hello ->
 
@@ -321,7 +332,7 @@ form_ack_frame(Pkt_Type, #quic_data{vx_module = Module} = Data0) when
   {ok, Ack_Frame} = quic_packet:form_frame(Module, Ack_Info),
   form_crypto_frame(Pkt_Type, Data1, Ack_Frame);
 
-form_ack_frame(Pkt_Type, #quic_data{vx_module = Module} = Data0) ->
+form_ack_frame(Pkt_Type, #{vx_module := Module} = Data0) ->
   %% All others are in the handshake range
   {ok, Data1, Ack_Info} = quic_cc:get_ack(handshake, Data0),
   {ok, Ack_Frame} = quic_packet:form_frame(Module, Ack_Info),
@@ -345,20 +356,22 @@ form_frames(Pkt_Type, Data0, #{binary := Ack_Bin} = Ack_Frame) ->
   end.
 
 
-form_crypto_frame(Pkt_Type, #quic_data{vx_module = Module} = Data0, Ack_Frame) ->
+form_crypto_frame(Pkt_Type, #{vx_module := Module} = Data0, Ack_Frame) ->
   %% Create the crypto frame binary, wrap it in the crypto frame header, and add it to the
   %% crypto transcript. This could be prettier, but I want the separation of the steps.
   {ok, Crypto_Data} = quic_crypto:form_frame(Pkt_Type, Data0),
+  io:format("Crypto Data: ~p~n", [Crypto_Data]),
   %% Add the transcript before the quic frame headers are added.
   {ok, Data1} = quic_crypto:add_transcript(Crypto_Data, Data0),
   {ok, Crypto_Frame} = quic_packet:form_frame(Module, Crypto_Data),
+  io:format("Crypto Frame: ~p~n", [Crypto_Frame]),
   form_packet(Pkt_Type, Data1, [Ack_Frame, Crypto_Frame]).
 
 -spec form_packet(Pkt_Type, Data, Frames) -> Result when
     Pkt_Type :: early_data | short | server_hello | client_hello |
                 encrypted_exts | certificate | cert_verify |
                 finished,
-    Data :: #quic_data{},
+    Data :: quic_data(),
     Frames :: [Frame],
     Frame :: quic_frame(),
     Result :: {ok, Data}.
@@ -380,7 +393,8 @@ form_packet(Pkt_Type, Data0, Frames) ->
                     handshake
                 end,
   
-  {ok, Data1, Header, Payload, Pkt_Num} = quic_packet:form_packet(Header_Type, Data0, Frames),
+  {ok, Data1, Header, Payload, Pkt_Num} = 
+    quic_packet:form_packet(Header_Type, Data0, Frames),
   encrypt_packet(Header_Type, Data1, Frames, Header, Payload, Pkt_Num).
 
 
@@ -390,10 +404,10 @@ encrypt_packet(Crypto_Range, Data0, Frames, Header, Payload, {Pkt_Num_Int, _Bin}
   send_packet(Crypto_Range, Data1, Frames, Packet, Pkt_Num_Int).
 
 
-send_packet(Crypto_Range, #quic_data{conn = #quic_conn{socket = Socket,
-                                                       address = IP,
-                                                       port = Port}
-                                    } = Data,
+send_packet(Crypto_Range, #{conn := #{socket := Socket,
+                                      address := IP,
+                                      port := Port}
+                           } = Data,
             Frames, Packet, Pkt_Num) ->
   prim_inet:sendto(Socket, IP, Port, Packet),
   packet_sent(Crypto_Range, Data, Frames, byte_size(Packet), Pkt_Num).
@@ -408,99 +422,10 @@ packet_sent(Range, Data, Frames, Packet_Size, Pkt_Num) ->
 
   quic_cc:packet_sent(Pkt_Range, Data, Frames, Packet_Size, Pkt_Num).
 
-%% send_and_form_packet(Pkt_Type, #quic_data{
-%%                                   conn = #quic_conn{
-%%                                             socket = Socket,
-%%                                             address = IP,
-%%                                             port = Port}
-%%                                  } = Data0) when
-%%     Pkt_Type =:= short; Pkt_Type =:= early_data ->
-%%   %% When Pkt_Type is short or early_data
-  
-%%   {ok, Data1, Ack_Frame} = quic_packet:create_ack_frame(Data0),
-%%   #{binary := Ack_Bin} = Ack_Frame,
-
-%%   case quic_cc:available_packet_size(Data1) of
-%%     {ok, Size} when Size < 33 ->
-%%       %% The maximum header + AEAD tag size is 33 bytes.
-%%       %% There is not room for the ack_frame
-%%       %% Maybe send an ack only packet here.
-%%       {ok, Data0};
-    
-%%     {ok, Size} when byte_size(Ack_Bin) + 33 < Size ->
-%%       %% There might be room for other frames.
-%%       case quic_staging:destage(Data1, (Size - 33 - byte_size(Ack_Bin))) of
-%%         {ok, _, []} when byte_size(Ack_Bin) == 0 ->
-%%           {ok, Data0};
-        
-%%         {ok, Data2, []} ->
-%%           %% No other frames could be added.
-%%           {ok, Data3, Header, Payload, Pkt_Num} = quic_packet:form_packet(Pkt_Type, Data2, [Ack_Frame]),
-%%           {ok, Data4, Packet} = quic_crypto:encrypt_packet(Pkt_Type, Data3, Header, Payload, Pkt_Num),
-%%           ok = prim_inet:sendto(Socket, IP, Port, Packet),
-%%           quic_cc:packet_sent(Data4, ack_only, byte_size(Packet), Pkt_Num);
-        
-%%         {ok, Data2, Frames} ->
-%%           %% Frames could be added.
-%%           {ok, Data3, Header, Payload, Pkt_Num} = quic_packet:form_packet(Pkt_Type, Data2,
-%%                                                                           [Ack_Frame | Frames]),
-%%           {ok, Data4, Packet} = quic_crypto:encrypt_packet(Pkt_Type, Data3, Header, Payload, Pkt_Num),
-%%           ok = prim_inet:sendto(Socket, IP, Port, Packet),
-%%           quic_cc:packet_sent(Data4, Frames, byte_size(Packet), Pkt_Num)
-%%         end;
-    
-%%     {ok, _Size} ->
-%%       {ok, Data2, Header, Payload, Pkt_Num} = quic_packet:form_packet(Pkt_Type, Data1, [Ack_Frame]),
-%%       {ok, Data3, Packet} = quic_crypto:encrypt_packet(Pkt_Type, Data2, Header, Payload, Pkt_Num),
-%%       ok = prim_inet:sendto(Socket, IP, Port, Packet),
-%%       quic_cc:packet_sent(Data3, ack_only, byte_size(Packet), Pkt_Num)
-%%   end;
-
-%% send_and_form_packet(Pkt_Type,
-%%                      #quic_data{
-%%                         conn = #quic_conn{
-%%                                   socket = Socket,
-%%                                   address = IP,
-%%                                   port = Port
-%%                                  }
-%%                        } = Data0) ->
-%%   %% This only applies to handshake packets.
-%%   %% The handshake packets do not get congestion control.
-
-%%   {ok, Crypto_Frame} = quic_crypto:form_frame(Pkt_Type, Data0),
-%%   #{binary := Crypto_Bin} = Crypto_Frame,
-
-%%   {ok, Data1, Ack_Frame} = quic_packet:create_ack_frame(Data0),
-%%   #{binary := Ack_Bin} = Ack_Frame,
-
-%%   %% TODO: Check this logic.
-%%   {ok, Data2, Frames} = case quic_cc:available_packet_size(Data1) of
-%%                    {ok, Size} when byte_size(Crypto_Bin) + byte_size(Ack_Bin) > Size,
-%%                                    byte_size(Crypto_Bin) < Size ->
-%%                      %% The Crypto Frame fits in the packet, but there is not enough room for the ack frame
-%%                      {ok, Data0, [Crypto_Frame]};
-%%                    {ok, Size} when byte_size(Crypto_Bin) < Size ->
-%%                      %% Both the crypto frame and the ack frame can fit.
-%%                      {ok, Data1, [Crypto_Frame, Ack_Frame]}
-%%                  end,
-%%   Crypto_Range = case Pkt_Type of
-%%                    client_hello ->
-%%                      initial;
-%%                    server_hello ->
-%%                      initial;
-%%                    _Other ->
-%%                      handshake
-%%                  end,
-
-%%   {ok, Data3, Header, Payload, Pkt_Num} = quic_packet:form_packet(Crypto_Range, Data2, Frames),
-%%   {ok, Data4, Packet} = quic_crypto:encrypt_packet(Crypto_Range, Data3, Header, Payload, Pkt_Num),
-%%   ok = prim_inet:sendto(Socket, IP, Port, Packet),
-%%   quic_cc:packet_sent(Data4, [Crypto_Frame], byte_size(Packet), Pkt_Num).
-
 
 -spec decrypt_and_parse_packet(Data, Raw_Packet, Attempt) -> Result when
     Raw_Packet :: binary(),
-    Data :: #quic_data{},
+    Data :: quic_data(),
     Attempt :: non_neg_integer(),
     Result :: {ok, Data} |
               {retry, Data} |
@@ -540,22 +465,26 @@ validate_token(Token) ->
 handle_payload(Data0, Pkt_Type, Pkt_Num, Payload) ->
   {ok, Data1} = quic_cc:queue_ack(Data0, Pkt_Type, Pkt_Num),
   case parse_packet(Data1, Payload) of
-    {ok, Data2, Frames, Ack_Frames, Crypto_Frames} ->
+    {ok, Frames, Ack_Frames, Crypto_Frames} ->
+      io:format("Crypto_Frames: ~p~n", [Crypto_Frames]),
       %% If there are crypto frames they should be handled first.
-      gen_statem:cast(self(), {handle_crypto, Pkt_Type, Crypto_Frames}),
+      Pid = self(),
+      lists:map(fun(Crypto_Frame) -> 
+                    gen_statem:cast(Pid, {handle_crypto, Pkt_Type, Crypto_Frame}) end,
+                Crypto_Frames),
       %% Ack frames should be handled second to speed the recovery process.
-      gen_statem:cast(self(), {handle_acks, Pkt_Type, Ack_Frames}),
+      gen_statem:cast(Pid, {handle_acks, Pkt_Type, Ack_Frames}),
       %% All other frames third.
-      gen_statem:cast(self(), {handle, Pkt_Type, Frames}),
-      {ok, Data2};
+      gen_statem:cast(Pid, {handle, Pkt_Type, Frames}),
+      {ok, Data1};
 
-    _Other ->
-      io:format(standard_error, "\tError parsing frames.~n", []),
+    Other ->
+      io:format(standard_error, "\tError parsing frames: ~p~n", [Other]),
       {ok, Data1}
   end.
 
 -spec handle_initial(Data, Header_Info, Raw_Packet, Attempt) -> Result when
-    Data :: #quic_data{},
+    Data :: quic_data(),
     Header_Info :: {initial, Token, Payload_Length, Header_Length},
     Token :: binary(),
     Payload_Length :: non_neg_integer(),
@@ -583,10 +512,13 @@ handle_initial(Data, {initial, _Token, Payload_Length, Header_Length},
                Raw_Packet, Attempt) ->
   %% If there is no token then just continue parsing and decrypting the packet.
   %% This will change when the token validation function is fleshed out.
-  decrypt_packet(Data, {initial, Header_Length, Payload_Length}, Raw_Packet, Attempt).
+  io:format("Received initial packet. Setting up crypto.~n"),
+  {ok, Data1} = quic_crypto:crypto_init(Data),
+  {ok, Data2} = quic_crypto:rekey(Data1),
+  decrypt_packet(Data2, {initial, Payload_Length, Header_Length}, Raw_Packet, Attempt).
 
 -spec decrypt_packet(Data, Header_Info, Raw_Packet, Attempt) -> Result when
-    Data :: #quic_data{},
+    Data :: quic_data(),
     Header_Info :: {Type, Payload_Length, Header_Length},
     Type :: initial | handshake | short | early_data,
     Payload_Length :: non_neg_integer(),
@@ -597,8 +529,10 @@ handle_initial(Data, {initial, _Token, Payload_Length, Header_Length},
 
 decrypt_packet(Data0, {Pkt_Type, Payload_Length, Header_Length},
                Raw_Packet, Attempt) ->
+  io:format("Header_Length: ~p~n", [Header_Length]),
   <<Header_Bin:Header_Length/binary, Enc_Payload/binary>> = Raw_Packet,
-  case quic_crypto:decrypt_packet(Data0, {Pkt_Type, Payload_Length, Header_Bin}, Enc_Payload) of
+  case quic_crypto:decrypt_packet(Data0, {Pkt_Type, Payload_Length, Header_Bin},
+                                  Enc_Payload) of
     {ok, Data1, Pkt_Num, Payload} ->
       handle_payload(Data1, Pkt_Type, Pkt_Num, Payload);
         
@@ -615,14 +549,16 @@ decrypt_packet(Data0, {Pkt_Type, Payload_Length, Header_Length},
       {ok, Data0}
   end.
 
-handle_retry(#quic_data{conn = Conn0} = Data0, {new_dcid, DCID, Retry_Token}) ->
+handle_retry(#{conn := Conn0} = Data0, {new_dcid, DCID, Retry_Token}) ->
   %% This function should update data with the information that is needed given by the
   %% reason. Most likely it is a different DCID, but other fields will have to be 
   %% considered in the future.
-  Data = Data0#quic_data{conn = Conn0#quic_conn{dest_conn_ID = DCID},
-                         crypto = #quic_crypto{},
-                         retry_token = Retry_Token},
+  Data = Data0#{conn := Conn0#{dest_conn_ID := DCID},
+                crypto => #{},
+                retry_token => Retry_Token},
   {retry, Data}.
 
 parse_packet(Data, Packet) ->
   quic_packet:parse_frames(Packet, Data).
+
+

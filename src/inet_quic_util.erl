@@ -78,13 +78,11 @@ parse_opts([{idle_timeout, Timeout} | Rest], Opts, Udp_Opts, Errors) when Timeou
 parse_opts([{preferred_address, {Address, Port, Conn_Id, Reset_Token}} | Rest], 
            Opts, Udp_Opts, Errors) ->
   %% This will need tweaking to check that each of the fields are valid.
-  Pref_Address =
-    #quic_pref_addr{
-       address = Address,
-       port = Port,
-       conn_id = Conn_Id,
-       reset_token = Reset_Token
-      },
+  Pref_Address = #{address => Address,
+                   port => Port,
+                   conn_id => Conn_Id,
+                   reset_token => Reset_Token
+                  },
   parse_opts(Rest, Opts#{preferred_address => Pref_Address}, Udp_Opts, Errors);
 
 parse_opts([{max_packet_size, Size} | Rest], Opts, Udp_Opts, Errors) when 
@@ -299,8 +297,12 @@ mod(Opts, Tag, Address, Map, Mod, Acc, _M) ->
 %% Some of the other inet functions might make an appearance here eventually.
 %% Just switching out the quic protocol name for udp before passing to inet.
 getservbyname(Name, _Protocol) ->
-  inet:getservbyname(Name, udp).
-
+  case inet:getservbyname(Name, udp) of
+    inet_udp ->
+      inet_quic;
+    inet6_udp ->
+      inet6_quic
+  end.
 
 %%%===================================================================
 %%% Internal functions

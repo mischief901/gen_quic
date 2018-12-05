@@ -1,16 +1,3 @@
-Compiling 1 file (.erl)
-src/quic_cc.erl:233: Warning: variable 'CC_Info' is unused
-src/quic_cc.erl:235: Warning: variable 'Crypto_Range' is unused
-src/quic_cc.erl:290: Warning: variable 'ECT0' is unused
-src/quic_cc.erl:290: Warning: variable 'ECT1' is unused
-src/quic_cc.erl:390: Warning: variable 'Pkt_Num' is unused
-src/quic_cc.erl:399: Warning: variable 'Pkt_Num' is unused
-src/quic_cc.erl:435: Warning: variable 'Delay' is unused
-src/quic_cc.erl:470: Warning: variable 'Pkt_Num' is unused
-src/quic_cc.erl:470: Warning: variable 'Pkt_Type' is unused
-src/quic_cc.erl:503: Warning: variable 'Type' is unused
-src/quic_cc.erl:513: Warning: variable 'Timer0' is unused
-Compiling 1 file (.ex)
 Finding suitable PLTs
 Checking PLT...
 [:compiler, :crypto, :elixir, :ets, :hkdf, :kernel, :logger, :public_key, :stdlib]
@@ -22,13 +9,25 @@ Starting Dialyzer
   files_rec: ['/home/alex/Documents/Projects/gen_quic/_build/dev/lib/gen_quic/ebin'],
   warnings: [:unknown]
 ]
-Total errors: 1, Skipped: 0
-done in 0m4.68s
-src/quic_conn.erl:575:pattern_match
+Total errors: 3, Skipped: 0
+done in 0m3.0s
+src/quic_conn.erl:492:pattern_match
 The pattern
 :invalid
 
 can never match the type
 :ok
+________________________________________________________________________________
+src/quic_statem.erl:40:no_return
+Function init/1 has no local return.
+________________________________________________________________________________
+Please file a bug in https://github.com/jeremyjh/dialyxir/issues with this message.
+
+Failed to parse warning:
+[{:"(", 1}, {:atom_part, 1, 'K'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'y'}, {:",", 1}, {:atom_part, 1, 'M'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'p'}, {:",", 1}, {:atom_part, 1, 'D'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'f'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 't'}, {:")", 1}, {:->, 1}, {:atom_part, 1, 'V'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'e'}, {:|, 1}, {:atom_part, 1, 'D'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'f'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'w'}, {:atom_part, 1, 'h'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'n'}, {:atom_part, 1, 'K'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'y'}, {:::, 1}, {:atom_part, 1, 't'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 'm'}, {:"(", 1}, {:")", 1}, {:",", 1}, {:atom_part, 1, 'M'}, {:atom_part, 1, ...}, {:atom_part, ...}, {...}, ...]
+
+
+Legacy warning:
+src/quic_statem.erl:43: The call maps:get('packing_priority',Quic_Opts::['binary' | 'list' | {atom(),'balanced' | 'binary' | 'false' | 'list' | 'low' | 'none' | 'once' | 'port' | 'term' | 'true' | integer() | {{byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},{byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()}} | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()} | #{'default_stream_opts'=>#{'active'=>'false' | 'once' | 'true' | integer(), 'mode'=>'binary' | 'list', 'pack'=>'balanced' | 'low' | 'none', 'stream_data_limit'=>non_neg_integer(), 'stream_timeout'=>'infinity' | non_neg_integer(), 'type'=>'bidi' | 'uni'}, 'init_stream_id_bidi'=>non_neg_integer(), 'init_stream_id_uni'=>non_neg_integer(), 'max_stream_id_bidi'=>non_neg_integer(), 'max_stream_id_uni'=>non_neg_integer(), 'stream_id_incr_bidi'=>non_neg_integer(), 'stream_id_incr_uni'=>non_neg_integer()}} | {'raw',non_neg_integer(),non_neg_integer(),binary()}],'none') will never return since the success typing is (any(),map(),any()) -> any() and the contract is (Key,Map,Default) -> Value | Default when Key :: term(), Map :: map(), Value :: term(), Default :: term()
 ________________________________________________________________________________
 [33mdone (warnings were emitted)[0m

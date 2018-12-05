@@ -3,13 +3,10 @@ defmodule GenQuic do
   An Elixir wrapper for the Erlang gen_quic library.
   """
 
-  @doc """
-  Opens a QUIC socket on the given port with the given options.
-  """
-  def open(port, options) do
-    :gen_quic.open(port, options)
+  def start() do
+    :gen_quic.start()
   end
-
+  
   @doc """
   Attempts to connect a client's socket to a server.
   """
@@ -17,14 +14,30 @@ defmodule GenQuic do
     :gen_quic.connect(ip, port, options, timeout)
   end
 
+  def connect(ip, port, options) do
+    :gen_quic.connect(ip, port, options)
+  end
+  
+
   def listen(port, options) do
     :gen_quic.listen(port, options)
   end
 
+  
+  def accept(lsocket) do
+    :gen_quic.accept(lsocket)
+  end
+  
   def accept(lsocket, timeout) do
     :gen_quic.accept(lsocket, timeout)
   end
 
+
+  def open(socket, options) do
+    :gen_quic.open(socket, options)
+  end
+  
+  
   def close(socket) do
     :gen_quic.close(socket)
   end

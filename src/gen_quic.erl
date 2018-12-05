@@ -90,6 +90,7 @@
 start() ->
   crypto:start(),
   quic_registry:start(),
+  quic_vxx:start_link([]),
   ok.
 
 %%
@@ -207,8 +208,11 @@ listen(Port, Opts0) ->
 
 accept(PeerSocket) ->
   case inet_db:lookup_socket(PeerSocket) of
-    {ok, Mod} ->
-      Mod:accept(PeerSocket);
+    {ok, inet_udp} ->
+      inet_quic:accept(PeerSocket);
+    %% {ok, inet6_udp} ->
+    %% Not implemented yet.
+    %%   inet6_quic:accept(PeerSocket);
     Error ->
       Error
   end.

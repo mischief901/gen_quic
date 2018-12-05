@@ -18,14 +18,15 @@
 
 -spec parse_frames(Payload) -> Result when
     Payload :: binary(),
-    Result :: {Frames, Acks, TLS_Info} |
+    Result :: {Frames, Acks, TLS_Frame} |
               {error, Reason},
     Frames :: quic_frame(),
     Acks :: quic_frame(),
-    TLS_Info :: #tls_record{},
+    TLS_Frame :: binary(),
     Reason :: gen_quic:error().
 
 parse_frames(<<Frames/binary>>) ->
+  io:format("Frames: ~p~n", [Frames]),
   parse_frame(Frames, []).
 
 %% These functions are the list of functions to call when a specific type is 
@@ -144,6 +145,11 @@ path_response() ->
   [parse_challenge, 
    parse_frame].
 
+crypto_frame() ->
+  [parse_var_length,
+   parse_message,
+   parse_frame].
+
 %% The streams have different headers so the stream event list has 
 %% the argument {Offset, Length, Fin} to indicate if the relevant bits are set.
 %% New stream with the remainder of the packet being the stream message.
@@ -206,9 +212,6 @@ parse_next(<<Packet/bits>>, Acc, [Next_Fun | Funs]) ->
       parse_token(Packet, Acc, Funs)
   end;
 
-parse_next(<<>>, Acc, []) ->
-  validate_packet(Acc);
-
 parse_next(<<>>, __Acc, _Funs) ->
   {error, protocol_violation}.
 
@@ -227,7 +230,7 @@ validate_packet(_Other, _Stack, _Funs) ->
 %% Returns when stack is empty.
 %% TODO: Add Crypto frame and crypto acc.
 validate_packet(Stack) ->
-  validate_packet(Stack, [], [], none).
+  validate_packet(Stack, [], [], []).
 
 validate_packet([], Acc, Ack_Frames, TLS_Info) ->
   {ok, Acc, Ack_Frames, TLS_Info};
@@ -286,6 +289,14 @@ validate_packet([Sequence, retire_conn_id | Rest], Acc, Ack_Frames, TLS_Info) ->
   validate_packet(Rest, [Frame | Acc], Ack_Frames, TLS_Info);
 
 %% 2 - item frames
+validate_packet([Crypto_Bin, Length, Offset, crypto_frame | Rest],
+                Acc, Ack_Frames, TLS_Info) ->
+  Frame = #{type => crypto,
+            offset => Offset,
+            length => Length,
+            binary => Crypto_Bin},
+  validate_packet(Rest, Acc, Ack_Frames, [Frame | TLS_Info]);
+
 validate_packet([App_Error, Stream_ID, stop_sending | Rest], 
                 Acc, Ack_Frames, TLS_Info) ->
 
@@ -516,6 +527,8 @@ construct_ack_frame(Stack, Frames, Ack_Frames,
 %% Not called anymore. Leaving for debug purposes.
 %% parse_frames(<<Binary/bits>>, Packet_Info) ->
 %%   parse_next(Binary, [], [parse_frame]).
+parse_frame(<<>>, Stack) ->
+  validate_packet(Stack);
 
 parse_frame(<<0:1, 0:1, 0:1, 0:1, Type:4, Rest/bits>>, Stack) ->
   case Type of
@@ -568,6 +581,9 @@ parse_frame(<<0:1, 0:1, 0:1, 0:1, Type:4, Rest/bits>>, Stack) ->
       parse_next(Rest, [path_response | Stack], path_response())
   end;
 
+parse_frame(<<24:8, Rest/bits>>, Stack) ->
+  parse_next(Rest, [crypto_frame | Stack], crypto_frame());
+
 parse_frame(<<26:8, Rest/bits>>, Stack) ->
   parse_next(Rest, [ack_frame | Stack], ack_frame());  
 
@@ -584,7 +600,8 @@ parse_frame(<<1:4, 0:1, Off:1, Len:1, 1:1 , Rest/bits>>, Stack) ->
              [{stream_close, Off, Len} | Stack], 
              stream({Off, Len}));
 
-parse_frame(_Other, __Stack) ->
+parse_frame(Other, _Stack) ->
+  io:format("Unknown frame: ~p~n", [Other]),
   {error, badarg}.
 
 
@@ -667,6 +684,7 @@ parse_offset(<<Integer:62, Rest/bits>>, Stack, Funs, 3) ->
   parse_next(Rest, [Integer | Stack], Funs);
 
 parse_offset(<<_Error/bits>>, Stack, _Funs, Offset) ->
+  io:format("Error, bad offset.~n"),
   {error, badarg}.
 
 
@@ -689,8 +707,8 @@ parse_message(<<Offset:2, Rest/bits>>, Stack, Funs) ->
   parse_offset_message(Rest, Stack, Funs, Offset).
 
 parse_message(<<Binary/bits>>, Stack, Funs, Length) ->
-  <<Message:Length, Rest/bits>> = Binary,
-  parse_next(Rest, [<<Message:Length>> | Stack], Funs).
+  <<Message:Length/binary, Rest/bits>> = Binary,
+  parse_next(Rest, [<<Message/binary>>, Length | Stack], Funs).
 
 parse_offset_message(<<Integer:6, Rest/bits>>, Stack, Funs, 0) ->
   parse_message(Rest, Stack, Funs, Integer);
@@ -705,6 +723,7 @@ parse_offset_message(<<Integer:62, Rest/bits>>, Stack, Funs, 3) ->
   parse_message(Rest, Stack, Funs, Integer);
 
 parse_offset_message(<<_Error/bits>>, Stack, _Funs, Offset) ->
+  io:format("Error, bad message.~n"),
   {error, badarg}.
 
 

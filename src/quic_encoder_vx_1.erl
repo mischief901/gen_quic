@@ -260,7 +260,10 @@ form_frame(#{type := crypto,
 form_frame(#{type := Type
             }) ->
   io:format(standard_error, "Invalid Frame type or parameters for frame: ~p.~n", [Type]),
-  {error, badarg}.
+  {error, badarg};
+
+form_frame(_) ->
+  {ok, #{type => empty, binary => <<>>}}.
 
 form_ack_frame(#{type := ack_frame,
                  ack_delay := Delay,
@@ -333,6 +336,7 @@ type_to_bin(retire_conn_id) ->      <<12:8>>;
 type_to_bin(stop_sending) ->        <<13:8>>;
 type_to_bin(path_challenge) ->      <<14:8>>;
 type_to_bin(path_response) ->       <<15:8>>;
+type_to_bin(crypto) ->              <<24:8>>;
 type_to_bin(new_token) ->           <<25:8>>;
 type_to_bin(ack) ->                 <<26:8>>;
 type_to_bin(ack_ecn) ->             <<27:8>>.
