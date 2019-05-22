@@ -294,15 +294,18 @@ mod(Opts, Tag, Address, Map, Mod, Acc, _M) ->
   mod(Opts, Tag, Address, Map, Mod, Acc).
 
 
+-spec getservbyname(any(), any()) -> inet_quic.
 %% Some of the other inet functions might make an appearance here eventually.
 %% Just switching out the quic protocol name for udp before passing to inet.
-getservbyname(Name, _Protocol) ->
-  case inet:getservbyname(Name, udp) of
-    inet_udp ->
-      inet_quic;
-    inet6_udp ->
-      inet6_quic
-  end.
+%% WARNING: THIS FUNCTION CHANGED WITH OTP 22.0
+getservbyname(_Name, _Protocol) ->
+  inet_quic.
+  %% case inet_udp:getserv(Name) of
+  %%   {ok, inet_udp} ->
+  %%     {ok, inet_quic};
+  %%   {ok, inet6_udp} ->
+  %%     {ok, inet6_quic}
+  %% end.
 
 %%%===================================================================
 %%% Internal functions

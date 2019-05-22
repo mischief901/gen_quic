@@ -19,8 +19,11 @@ start(IP, Port) ->
 loop(Socket, Stream, Owner) ->
   receive
     {stream_data, Stream, Data} ->
-      io:format("~a~n", [Data]),
+      io:format("~p~n", [Data]),
       erlang:sleep(1000),
       gen_quic:send(Stream, Data),
       loop(Socket, Stream, Owner);
     stream_close ->
+      gen_quic:close(Stream),
+      ok
+  end.

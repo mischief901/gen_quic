@@ -82,7 +82,8 @@ register_conn_id(Socket, Conn_ID) ->
     Socket :: gen_quic:socket().
 
 unregister_name(Socket) ->
-  ets:delete(?TABLE, Socket).
+  ets:delete(?TABLE, Socket),
+  ok.
   %% case ets:lookup_element(?TABLE, Socket, 3) of
   %%   #{} ->
   %%     %% If the stream map is empty, then remove it.

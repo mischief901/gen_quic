@@ -41,6 +41,7 @@ init([#{type := Type} = Data0, Quic_Opts]) ->
   io:format("Initializing Crypto.~n"),
   {ok, Data1} = quic_crypto:default_params(Data0, Quic_Opts),
   Staging_Priority = maps:get(packing_priority, Quic_Opts, none),
+  %% Dialyzer says the maps:get call will fail, when it should not fail.
   {ok, Data2} = quic_staging:init(Data1, Staging_Priority),
   io:format("Staging Initialized.~n"),
   case Type of

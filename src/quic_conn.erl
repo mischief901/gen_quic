@@ -505,6 +505,7 @@ handle_initial(Data0, {initial, Token, Payload_Length, Header_Length},
                      Raw_Packet, Attempt);
 
     invalid ->
+      %% Will not match because this branch is Not implemented yet.
       {error, invalid_token}
   end;
 

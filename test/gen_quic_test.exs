@@ -1,8 +1,8 @@
 defmodule GenQuicTest do
   use ExUnit.Case
   doctest GenQuic
-
-  test "greets the world" do
-    assert GenQuic.hello() == :world
+  
+  test "No Tests yet." do
+    assert False
   end
 end

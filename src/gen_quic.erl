@@ -227,8 +227,8 @@ accept(PeerSocket) ->
 
 accept(PeerSocket, Timeout) ->
   case inet_db:lookup_socket(PeerSocket) of
-    {ok, Mod} ->
-      Mod:accept(PeerSocket, Timeout);
+    {ok, _Mod} ->
+      inet_quic:accept(PeerSocket, Timeout);
     Error ->
       Error
   end.

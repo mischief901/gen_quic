@@ -21,7 +21,7 @@ loop(Socket, Owner) ->
       spawn_link(ping_server, ping_stream, [Owner, Stream]),
       loop(Socket, Owner);
     {stream_close, {Socket, Stream_ID}} ->
-      io:format("Stream ~a shutdown.~n", [Stream_ID]),
+      io:format("Stream ~p shutdown.~n", [Stream_ID]),
       loop(Socket, Owner);
     close ->
       gen_quic:close(Socket),
@@ -31,7 +31,7 @@ loop(Socket, Owner) ->
 ping_stream(Owner, Stream) ->
   receive
     {stream_data, Info} ->
-      io:format("~a~n", [Info]),
+      io:format("~p~n", [Info]),
       gen_quic:send(Stream, "Pong"),
       ping_stream(Owner, Stream);
     stream_close ->

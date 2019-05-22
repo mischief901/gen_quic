@@ -467,6 +467,7 @@ queue_ack(#{cc_info := #{acks_to_be_sent := Ack_Ranges} = CC0
 
 queue_ack(Data, Pkt_Type, Pkt_Num) ->
   io:format("Unimplemented: queue_ack.~n"),
+  io:format("Data: ~p~n", [Data]),
   {ok, Data}.
 
 
