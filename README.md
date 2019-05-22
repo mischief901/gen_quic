@@ -1,21 +1,20 @@
 # GenQuic
 
-**TODO: Add description**
+I am going to start working on this again. There are some fairly large issues with the
+crypto handshake that will be high priority to resolve.
+
+TODO:
+
+- Documentation
+- Examples
+- Tests
+- List of supported parameters and differences from QUIC
+- Fix errors from dialyzer. Most likely a constant TODO.
+- Fix the crypto handshake. Potentially change to calling the tls module now that 1.3 is
+  supported. I'm going to see if I can just get the tls messages.
+- Look into using the new atomics module.
 
 ## Installation
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `gen_quic` to your list of dependencies in `mix.exs`:
-
-```elixir
-def deps do
-  [
-    {:gen_quic, "~> 0.1.0"}
-  ]
-end
-```
-
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at [https://hexdocs.pm/gen_quic](https://hexdocs.pm/gen_quic).
-
+Installation is not quite recommended yet. If you want to though, it can be installed in
+the same manner as just about any Elixir library pulled from github.
