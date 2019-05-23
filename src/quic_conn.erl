@@ -45,24 +45,27 @@ connect(Address, Port, Opts, Timeout) ->
   {ok, Socket} = inet_udp:open(0, [{active, false}, binary | Udp_Opts]),
 
   Crypto = quic_crypto:default_crypto(),
-  Data = #{type => client,
-           vx_module => quic_vx_1,
-           version => #{initial_version => <<1:32>>},
-           conn => #{socket => Socket,
-                     owner => self()
-                    },
-           pkt_nums => #{initial => {0, 0, 0},
-                         handshake => {0, 0, 0},
-                         application => {0, 0, 0}},
-           crypto => Crypto
-          },
+  Data0 = #{type => client,
+            vx_module => quic_vx_1,
+            version => #{initial_version => <<1:32>>},
+            conn => #{socket => Socket,
+                      owner => self()
+                     },
+            pkt_nums => #{initial => {0, 0, 0},
+                          handshake => {0, 0, 0},
+                          application => {0, 0, 0}},
+            crypto => Crypto
+           },
+  Data1 = quic_cc:timer_init(Data0),
+  Data2 = quic_cc:congestion_init(Data1),
+
   io:format("Starting connection.~n"),
   %% TODO: Move this to a wrapper function in quic_statem.
   {ok, Pid} = gen_statem:start_link(via(Socket), quic_statem,
-                                    [Data, Quic_Opts], []),
+                                    [Data2, Quic_Opts], []),
 
   io:format("Starting balancer.~n"),
-  %% TODO: Change empty list to balancer_options when available.
+  %% TODO: Change empty map to balancer_options when available.
   {ok, _} = stream_balancer:start_balancer(Socket, #{}),
   inet_udp:controlling_process(Socket, Pid),
   io:format("Connecting...~n"),
@@ -100,22 +103,24 @@ accept(LSocket, Timeout, Opts) ->
   {ok, Socket} = inet_udp:open(0, [{active, true}, binary | Udp_Opts]),
   
   Crypto = quic_crypto:default_crypto(),
-  Data = #{type => server,
-           vx_module => quic_vx_1,
-           conn => #{socket => Socket,
-                     owner => self()
-                    },
-           pkt_nums => #{initial => {0, 0, 0},
-                         handshake => {0, 0, 0},
-                         application => {0, 0, 0}},
-           crypto => Crypto
-          },
+  Data0 = #{type => server,
+            vx_module => quic_vx_1,
+            conn => #{socket => Socket,
+                      owner => self()
+                     },
+            pkt_nums => #{initial => {0, 0, 0},
+                          handshake => {0, 0, 0},
+                          application => {0, 0, 0}},
+            crypto => Crypto
+           },
+  Data1 = quic_cc:timer_init(Data0),
+  Data2 = quic_cc:congestion_init(Data1),
 
   %% TODO: Move this to a wrapper function in quic_statem.
   {ok, Pid} = gen_statem:start_link(via(Socket), quic_statem,
-                                    [Data, Quic_Opts], []),
+                                    [Data2, Quic_Opts], []),
   
-  %% TODO: change empty list to balancer_options when available.
+  %% TODO: change empty map to balancer_options when available.
   {ok, _} = stream_balancer:start_balancer(Socket, #{}),
   
   inet_udp:controlling_process(Socket, Pid),
@@ -284,6 +289,7 @@ handle_frame(#{} = _Frame, #{} = Data) ->
                         cert_verify | certificate | finished,
     Data :: quic_data().
 send_and_form_packet(Pkt_Type, Data) ->
+  %% This Check needs to be moved.
   case {maps:get(cc_info, Data, undefined), maps:get(timer_info, Data, undefined)} of
     {undefined, undefined} ->
       %% congestion_control parameters are not initialized yet

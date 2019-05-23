@@ -222,6 +222,10 @@ get_timeout(#{loss_time := Loss_Time}) ->
     Pkt_Nums :: [Pkt_Num],
     Pkt_Num :: non_neg_integer().
 
+handle_acks(_State, Data, _Crypto, []) ->
+  %% When there are no acks to handle.
+  {ok, Data};
+
 handle_acks(CC_State0,
             #{timer_info := #{sent_packets := Sent0,
                               smooth_rtt := SRTT0,

@@ -24,7 +24,7 @@
     Frames :: [Frame],
     Ack_Frames :: [Frame],
     Frame :: quic_frame(),
-    TLS_Info :: binary(),
+    TLS_Info :: [Frame],
     Reason :: gen_quic:error().
 
 parse_frames(Payload) ->

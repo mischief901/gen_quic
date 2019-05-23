@@ -241,11 +241,11 @@ parse_length(<<Header/bits>>, Data, Type, Length_Length, Header_Length) ->
 -spec parse_frames(Payload, Data) -> Result when
     Payload :: binary(),
     Data :: quic_data(),
-    Result :: {ok, Data, Frames, Acks, TLS_Frame} |
+    Result :: {ok, Frames, Acks, TLS_Frame} |
               {error, Reason},
     Frames :: [quic_frame()],
     Acks :: [quic_frame()],
-    TLS_Frame :: binary(),
+    TLS_Frame :: [quic_frame()],
     Reason :: gen_quic:error().
 
 parse_frames(<<Payload/binary>>, 

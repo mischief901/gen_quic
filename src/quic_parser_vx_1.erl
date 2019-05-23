@@ -20,9 +20,9 @@
     Payload :: binary(),
     Result :: {Frames, Acks, TLS_Frame} |
               {error, Reason},
-    Frames :: quic_frame(),
-    Acks :: quic_frame(),
-    TLS_Frame :: binary(),
+    Frames :: [quic_frame()],
+    Acks :: [quic_frame()],
+    TLS_Frame :: [quic_frame()],
     Reason :: gen_quic:error().
 
 parse_frames(<<Frames/binary>>) ->
@@ -232,8 +232,8 @@ validate_packet(_Other, _Stack, _Funs) ->
 validate_packet(Stack) ->
   validate_packet(Stack, [], [], []).
 
-validate_packet([], Acc, Ack_Frames, TLS_Info) ->
-  {ok, Acc, Ack_Frames, TLS_Info};
+validate_packet([], Frames, Ack_Frames, TLS_Info) ->
+  {ok, Frames, Ack_Frames, TLS_Info};
 
 %% 0 - item frames
 validate_packet([ping | Rest], Acc, Ack_Frames, TLS_Info) ->
@@ -527,6 +527,7 @@ construct_ack_frame(Stack, Frames, Ack_Frames,
 %% Not called anymore. Leaving for debug purposes.
 %% parse_frames(<<Binary/bits>>, Packet_Info) ->
 %%   parse_next(Binary, [], [parse_frame]).
+
 parse_frame(<<>>, Stack) ->
   validate_packet(Stack);
 
