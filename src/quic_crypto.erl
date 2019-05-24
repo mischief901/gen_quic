@@ -93,6 +93,7 @@ default_crypto() ->
     group         => undefined
    }.
 
+-spec crypto_options() -> [atom()].
 
 crypto_options() ->
   [
@@ -107,6 +108,7 @@ crypto_options() ->
 -spec setopts(Crypto, Options) -> Crypto when
     Crypto :: quic_crypto(),
     Options :: gen_quic:option().
+
 setopts(Crypto, Options) ->
   lists:foldl(fun(Option, Crypto_Acc) ->
                   case maps:get(Option, Options, undefined) of
@@ -115,6 +117,8 @@ setopts(Crypto, Options) ->
                     Value ->
                       Crypto_Acc#{Option => Value}
                   end end, Crypto, crypto_options()).
+
+-spec quic_params() -> [atom()].
 
 quic_params() ->
   %% Returns a list of keywords for the quic parameters.
@@ -132,6 +136,9 @@ quic_params() ->
    migration,
    max_ack_delay
   ].
+
+
+-spec default_params() -> map().
 
 default_params() ->
   #{init_max_stream_data => 5000,
@@ -180,6 +187,8 @@ default_params(#{type := server,
   Crypto = setopts(Crypto0, Options),
   {ok, Data0#{params => Params, crypto => Crypto}}.
 
+
+-spec add_param(map(), atom(), term()) -> map().
 %% This function exists because records are not dynamic and as such values cannot
 %% be added in the function above. Probably will move to maps at some point.
 %% TODO: Add option validation here. Might work better as an inline case.
@@ -728,7 +737,7 @@ add_transcript(#{crypto_type := Crypto_Type, offset := Offset, binary := Bin},
 %% Initial key derivations.
 rekey(#{crypto := #{state := undefined,
                     init_secret := Init_Secret,
-                    other_pub_key := Other_Pub_Key
+                    other_pub_key := _Other_Pub_Key
                    } = Crypto0
        } = Data0) ->
 

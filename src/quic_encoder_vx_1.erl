@@ -265,6 +265,9 @@ form_frame(#{type := Type
 form_frame(_) ->
   {ok, #{type => empty, binary => <<>>}}.
 
+
+-spec form_ack_frame(quic_frame()) -> {ok, quic_frame()}.
+
 form_ack_frame(#{type := ack_frame,
                  ack_delay := Delay,
                  acks := Acks0,
@@ -300,6 +303,10 @@ form_ack_frame(Frame0, Head_Bin, Largest, Ack_List, Option_ECN) ->
   Frame = Frame0#{binary => Binary},
   {ok, Frame}.
 
+
+-spec form_ack_block(binary(), non_neg_integer(), [non_neg_integer()], 
+                     non_neg_integer(), non_neg_integer()) -> binary().
+
 form_ack_block(Block, Largest, [Next_Ack | Rest_Acks], Block_Count, Ack_Count) when
     Largest == Next_Ack + 1 ->
   form_ack_block(Block, Next_Ack, Rest_Acks, Block_Count, Ack_Count + 1);
@@ -315,10 +322,13 @@ form_ack_block(Blocks, _Smallest, [], Block_Count, Ack_Count) ->
   Block_Num = quic_utils:to_var_length(Block_Count),
   <<Block_Num/binary, Blocks/binary, Ack_Num/binary>>.
 
+
+-spec form_stream_frame(quic_frame()) -> {ok, quic_frame()}.
 form_stream_frame(Frame) ->
   {ok, Frame}.
 
 
+-spec type_to_bin(atom()) -> binary().
 %% This converts all the frame types to binary except for stream frames which require
 %% extra info.
 type_to_bin(rst_stream) ->           <<1:8>>;

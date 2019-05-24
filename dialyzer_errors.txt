@@ -1,33 +1,2360 @@
+Compiling 1 file (.erl)
+Compiling 1 file (.ex)
 Finding suitable PLTs
 Checking PLT...
-[:compiler, :crypto, :elixir, :ets, :hkdf, :kernel, :logger, :public_key, :stdlib]
+[:compiler, :crypto, :elixir, :hkdf, :kernel, :logger, :public_key, :stdlib]
 PLT is up to date!
 Starting Dialyzer
 [
   check_plt: false,
-  init_plt: '/home/alex/Documents/Projects/gen_quic/_build/dev/dialyxir_erlang-21.0.4_elixir-1.7.2_deps-dev.plt',
+  init_plt: '/home/alex/Documents/Projects/gen_quic/_build/dev/dialyxir_erlang-22.0_elixir-1.8.2_deps-dev.plt',
   files_rec: ['/home/alex/Documents/Projects/gen_quic/_build/dev/lib/gen_quic/ebin'],
   warnings: [:unknown]
 ]
-Total errors: 3, Skipped: 0
-done in 0m3.0s
-src/quic_conn.erl:492:pattern_match
+Total errors: 13, Skipped: 0
+done in 0m3.63s
+src/quic_conn.erl:374:call
+The call:
+:quic_conn.form_packet(
+  Pkt_Type :: :early_data | :short,
+  Data0 :: %{
+    :cc_info => %{:bytes_in_flight => number(), :congestion_window => number(), _ => _},
+    :send_queue => :quic_staging.staging(),
+    :conn => %{
+      :address =>
+        {byte(), byte(), byte(), byte()}
+        | {char(), char(), char(), char(), char(), char(), char(), char()},
+      :dest_conn_ID => binary(),
+      :owner => pid(),
+      :port => char(),
+      :socket => port(),
+      :src_conn_ID => binary()
+    },
+    :crypto => %{
+      :cert => :undefined | binary(),
+      :cert_chain => [binary()],
+      :cert_priv_key => :undefined | binary(),
+      :cipher => :undefined | {atom(), atom()},
+      :client_early_iv => binary(),
+      :client_early_key => binary(),
+      :client_handshake_iv => binary(),
+      :client_handshake_key => binary(),
+      :client_handshake_secret => binary(),
+      :client_init_iv => binary(),
+      :client_init_key => binary(),
+      :client_init_secret => binary(),
+      :client_protected_iv => binary(),
+      :client_protected_key => binary(),
+      :client_protected_secret => binary(),
+      :group => _,
+      :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+      :handshake_secret => binary(),
+      :init_offsets => {non_neg_integer(), non_neg_integer()},
+      :init_secret => binary(),
+      :other_pub_key => _,
+      :pkt_num_handshake_secret => binary(),
+      :pkt_num_init_secret => binary(),
+      :pkt_num_protected_secret => binary(),
+      :priv_key => :undefined | binary(),
+      :protected_offsets => {non_neg_integer(), non_neg_integer()},
+      :protected_secret => binary(),
+      :pub_key => :undefined | binary(),
+      :server_handshake_iv => binary(),
+      :server_handshake_key => binary(),
+      :server_handshake_secret => binary(),
+      :server_init_iv => binary(),
+      :server_init_key => binary(),
+      :server_init_secret => binary(),
+      :server_protected_iv => binary(),
+      :server_protected_key => binary(),
+      :server_protected_secret => binary(),
+      :signature_alg => :undefined | {atom(), atom(), atom()},
+      :state => atom(),
+      :tls_version => :undefined | non_neg_integer(),
+      :transcript => binary()
+    },
+    :current_data => non_neg_integer(),
+    :params => %{
+      :ack_delay_exp => non_neg_integer(),
+      :idle_timeout => non_neg_integer(),
+      :init_max_bi_streams => non_neg_integer(),
+      :init_max_data => non_neg_integer(),
+      :init_max_stream_data => non_neg_integer(),
+      :init_max_uni_streams => non_neg_integer(),
+      :max_packet_size => non_neg_integer(),
+      :migration => boolean(),
+      :preferred_address => %{
+        :address =>
+          {byte(), byte(), byte(), byte()}
+          | {char(), char(), char(), char(), char(), char(), char(), char()},
+        :conn_id => binary(),
+        :port => char(),
+        :reset_token => binary()
+      },
+      :reset_token => binary()
+    },
+    :pkt_nums => map(),
+    :priority_num => non_neg_integer(),
+    :retry_token => binary(),
+    :timer_info => map(),
+    :type => :client | :server,
+    :version => %{
+      :initial_version => binary(),
+      :negotiated_version => binary(),
+      :supported_versions => [binary()]
+    },
+    :vx_module => atom()
+  },
+  [
+    %{
+      :binary => binary(),
+      :ack_delay => non_neg_integer(),
+      :acks => [non_neg_integer()],
+      :challenge => binary(),
+      :conn_id => binary(),
+      :crypto_type =>
+        :cert_verify
+        | :certificate
+        | :client_hello
+        | :encrypted_exts
+        | :finished
+        | :server_hello,
+      :ecn_count => {non_neg_integer(), non_neg_integer(), non_neg_integer()},
+      :error_code => binary() | non_neg_integer(),
+      :error_message => binary(),
+      :largest => non_neg_integer(),
+      :length => non_neg_integer(),
+      :max_data => non_neg_integer(),
+      :max_stream_data => non_neg_integer(),
+      :max_stream_id => non_neg_integer(),
+      :offset => non_neg_integer(),
+      :retransmit => true,
+      :sequence => integer(),
+      :stream_id => non_neg_integer(),
+      :stream_owner => 0 | 1,
+      :stream_type => 0 | 1,
+      :token => binary(),
+      :type => atom()
+    },
+    ...
+  ]
+)
+
+will never return since it differs in arguments with
+positions 1 from the success typing arguments:
+
+(
+  :cert_verify | :certificate | :client_hello | :encrypted_exts | :finished | :server_hello,
+  %{
+    :vx_module => atom(),
+    :cc_info => map(),
+    :conn => %{
+      :address =>
+        {byte(), byte(), byte(), byte()}
+        | {char(), char(), char(), char(), char(), char(), char(), char()},
+      :dest_conn_ID => binary(),
+      :owner => pid(),
+      :port => char(),
+      :socket => port(),
+      :src_conn_ID => binary()
+    },
+    :crypto => %{
+      :cert => :undefined | binary(),
+      :cert_chain => [binary()],
+      :cert_priv_key => :undefined | binary(),
+      :cipher => :undefined | {atom(), atom()},
+      :client_early_iv => binary(),
+      :client_early_key => binary(),
+      :client_handshake_iv => binary(),
+      :client_handshake_key => binary(),
+      :client_handshake_secret => binary(),
+      :client_init_iv => binary(),
+      :client_init_key => binary(),
+      :client_init_secret => binary(),
+      :client_protected_iv => binary(),
+      :client_protected_key => binary(),
+      :client_protected_secret => binary(),
+      :group => _,
+      :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+      :handshake_secret => binary(),
+      :init_offsets => {non_neg_integer(), non_neg_integer()},
+      :init_secret => binary(),
+      :other_pub_key => _,
+      :pkt_num_handshake_secret => binary(),
+      :pkt_num_init_secret => binary(),
+      :pkt_num_protected_secret => binary(),
+      :priv_key => :undefined | binary(),
+      :protected_offsets => {non_neg_integer(), non_neg_integer()},
+      :protected_secret => binary(),
+      :pub_key => :undefined | binary(),
+      :server_handshake_iv => binary(),
+      :server_handshake_key => binary(),
+      :server_handshake_secret => binary(),
+      :server_init_iv => binary(),
+      :server_init_key => binary(),
+      :server_init_secret => binary(),
+      :server_protected_iv => binary(),
+      :server_protected_key => binary(),
+      :server_protected_secret => binary(),
+      :signature_alg => :undefined | {atom(), atom(), atom()},
+      :state => atom(),
+      :tls_version => :undefined | non_neg_integer(),
+      :transcript => binary()
+    },
+    :current_data => non_neg_integer(),
+    :params => %{
+      :ack_delay_exp => non_neg_integer(),
+      :idle_timeout => non_neg_integer(),
+      :init_max_bi_streams => non_neg_integer(),
+      :init_max_data => non_neg_integer(),
+      :init_max_stream_data => non_neg_integer(),
+      :init_max_uni_streams => non_neg_integer(),
+      :max_packet_size => non_neg_integer(),
+      :migration => boolean(),
+      :preferred_address => %{
+        :address => {_, _, _, _} | {_, _, _, _, _, _, _, _},
+        :conn_id => binary(),
+        :port => char(),
+        :reset_token => binary()
+      },
+      :reset_token => binary()
+    },
+    :pkt_nums => map(),
+    :priority_num => non_neg_integer(),
+    :retry_token => binary(),
+    :send_queue => :quic_staging.staging(),
+    :timer_info => map(),
+    :type => :client | :server,
+    :version => %{
+      :initial_version => binary(),
+      :negotiated_version => binary(),
+      :supported_versions => [binary()]
+    }
+  },
+  [
+    %{
+      :ack_delay => non_neg_integer(),
+      :acks => [non_neg_integer()],
+      :binary => binary(),
+      :challenge => binary(),
+      :conn_id => binary(),
+      :crypto_type =>
+        :cert_verify
+        | :certificate
+        | :client_hello
+        | :encrypted_exts
+        | :finished
+        | :server_hello,
+      :ecn_count => {non_neg_integer(), non_neg_integer(), non_neg_integer()},
+      :error_code => binary() | non_neg_integer(),
+      :error_message => binary(),
+      :largest => non_neg_integer(),
+      :length => non_neg_integer(),
+      :max_data => non_neg_integer(),
+      :max_stream_data => non_neg_integer(),
+      :max_stream_id => non_neg_integer(),
+      :offset => non_neg_integer(),
+      :retransmit => true,
+      :sequence => integer(),
+      :stream_id => non_neg_integer(),
+      :stream_owner => 0 | 1,
+      :stream_type => 0 | 1,
+      :token => binary(),
+      :type => atom()
+    },
+    ...
+  ]
+)
+________________________________________________________________________________
+src/quic_conn.erl:377:call
+The call:
+:quic_conn.form_packet(
+  Pkt_Type :: :early_data | :short,
+  Data1 :: %{
+    :send_queue => :quic_staging.staging(),
+    :cc_info => map(),
+    :conn => %{
+      :address =>
+        {byte(), byte(), byte(), byte()}
+        | {char(), char(), char(), char(), char(), char(), char(), char()},
+      :dest_conn_ID => binary(),
+      :owner => pid(),
+      :port => char(),
+      :socket => port(),
+      :src_conn_ID => binary()
+    },
+    :crypto => %{
+      :cert => :undefined | binary(),
+      :cert_chain => [binary()],
+      :cert_priv_key => :undefined | binary(),
+      :cipher => :undefined | {atom(), atom()},
+      :client_early_iv => binary(),
+      :client_early_key => binary(),
+      :client_handshake_iv => binary(),
+      :client_handshake_key => binary(),
+      :client_handshake_secret => binary(),
+      :client_init_iv => binary(),
+      :client_init_key => binary(),
+      :client_init_secret => binary(),
+      :client_protected_iv => binary(),
+      :client_protected_key => binary(),
+      :client_protected_secret => binary(),
+      :group => _,
+      :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+      :handshake_secret => binary(),
+      :init_offsets => {non_neg_integer(), non_neg_integer()},
+      :init_secret => binary(),
+      :other_pub_key => _,
+      :pkt_num_handshake_secret => binary(),
+      :pkt_num_init_secret => binary(),
+      :pkt_num_protected_secret => binary(),
+      :priv_key => :undefined | binary(),
+      :protected_offsets => {non_neg_integer(), non_neg_integer()},
+      :protected_secret => binary(),
+      :pub_key => :undefined | binary(),
+      :server_handshake_iv => binary(),
+      :server_handshake_key => binary(),
+      :server_handshake_secret => binary(),
+      :server_init_iv => binary(),
+      :server_init_key => binary(),
+      :server_init_secret => binary(),
+      :server_protected_iv => binary(),
+      :server_protected_key => binary(),
+      :server_protected_secret => binary(),
+      :signature_alg => :undefined | {atom(), atom(), atom()},
+      :state => atom(),
+      :tls_version => :undefined | non_neg_integer(),
+      :transcript => binary()
+    },
+    :current_data => non_neg_integer(),
+    :params => %{
+      :ack_delay_exp => non_neg_integer(),
+      :idle_timeout => non_neg_integer(),
+      :init_max_bi_streams => non_neg_integer(),
+      :init_max_data => non_neg_integer(),
+      :init_max_stream_data => non_neg_integer(),
+      :init_max_uni_streams => non_neg_integer(),
+      :max_packet_size => non_neg_integer(),
+      :migration => boolean(),
+      :preferred_address => %{
+        :address =>
+          {byte(), byte(), byte(), byte()}
+          | {char(), char(), char(), char(), char(), char(), char(), char()},
+        :conn_id => binary(),
+        :port => char(),
+        :reset_token => binary()
+      },
+      :reset_token => binary()
+    },
+    :pkt_nums => map(),
+    :priority_num => non_neg_integer(),
+    :retry_token => binary(),
+    :timer_info => map(),
+    :type => :client | :server,
+    :version => %{
+      :initial_version => binary(),
+      :negotiated_version => binary(),
+      :supported_versions => [binary()]
+    },
+    :vx_module => atom()
+  },
+  [
+    %{
+      :ack_delay => non_neg_integer(),
+      :acks => [non_neg_integer()],
+      :binary => binary(),
+      :challenge => binary(),
+      :conn_id => binary(),
+      :crypto_type =>
+        :cert_verify
+        | :certificate
+        | :client_hello
+        | :encrypted_exts
+        | :finished
+        | :server_hello,
+      :ecn_count => {non_neg_integer(), non_neg_integer(), non_neg_integer()},
+      :error_code => binary() | non_neg_integer(),
+      :error_message => binary(),
+      :largest => non_neg_integer(),
+      :length => non_neg_integer(),
+      :max_data => non_neg_integer(),
+      :max_stream_data => non_neg_integer(),
+      :max_stream_id => non_neg_integer(),
+      :offset => non_neg_integer(),
+      :retransmit => true,
+      :sequence => integer(),
+      :stream_id => non_neg_integer(),
+      :stream_owner => 0 | 1,
+      :stream_type => 0 | 1,
+      :token => binary(),
+      :type => atom()
+    },
+    ...
+  ]
+)
+
+will never return since it differs in arguments with
+positions 1 from the success typing arguments:
+
+(
+  :cert_verify | :certificate | :client_hello | :encrypted_exts | :finished | :server_hello,
+  %{
+    :vx_module => atom(),
+    :cc_info => map(),
+    :conn => %{
+      :address =>
+        {byte(), byte(), byte(), byte()}
+        | {char(), char(), char(), char(), char(), char(), char(), char()},
+      :dest_conn_ID => binary(),
+      :owner => pid(),
+      :port => char(),
+      :socket => port(),
+      :src_conn_ID => binary()
+    },
+    :crypto => %{
+      :cert => :undefined | binary(),
+      :cert_chain => [binary()],
+      :cert_priv_key => :undefined | binary(),
+      :cipher => :undefined | {atom(), atom()},
+      :client_early_iv => binary(),
+      :client_early_key => binary(),
+      :client_handshake_iv => binary(),
+      :client_handshake_key => binary(),
+      :client_handshake_secret => binary(),
+      :client_init_iv => binary(),
+      :client_init_key => binary(),
+      :client_init_secret => binary(),
+      :client_protected_iv => binary(),
+      :client_protected_key => binary(),
+      :client_protected_secret => binary(),
+      :group => _,
+      :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+      :handshake_secret => binary(),
+      :init_offsets => {non_neg_integer(), non_neg_integer()},
+      :init_secret => binary(),
+      :other_pub_key => _,
+      :pkt_num_handshake_secret => binary(),
+      :pkt_num_init_secret => binary(),
+      :pkt_num_protected_secret => binary(),
+      :priv_key => :undefined | binary(),
+      :protected_offsets => {non_neg_integer(), non_neg_integer()},
+      :protected_secret => binary(),
+      :pub_key => :undefined | binary(),
+      :server_handshake_iv => binary(),
+      :server_handshake_key => binary(),
+      :server_handshake_secret => binary(),
+      :server_init_iv => binary(),
+      :server_init_key => binary(),
+      :server_init_secret => binary(),
+      :server_protected_iv => binary(),
+      :server_protected_key => binary(),
+      :server_protected_secret => binary(),
+      :signature_alg => :undefined | {atom(), atom(), atom()},
+      :state => atom(),
+      :tls_version => :undefined | non_neg_integer(),
+      :transcript => binary()
+    },
+    :current_data => non_neg_integer(),
+    :params => %{
+      :ack_delay_exp => non_neg_integer(),
+      :idle_timeout => non_neg_integer(),
+      :init_max_bi_streams => non_neg_integer(),
+      :init_max_data => non_neg_integer(),
+      :init_max_stream_data => non_neg_integer(),
+      :init_max_uni_streams => non_neg_integer(),
+      :max_packet_size => non_neg_integer(),
+      :migration => boolean(),
+      :preferred_address => %{
+        :address => {_, _, _, _} | {_, _, _, _, _, _, _, _},
+        :conn_id => binary(),
+        :port => char(),
+        :reset_token => binary()
+      },
+      :reset_token => binary()
+    },
+    :pkt_nums => map(),
+    :priority_num => non_neg_integer(),
+    :retry_token => binary(),
+    :send_queue => :quic_staging.staging(),
+    :timer_info => map(),
+    :type => :client | :server,
+    :version => %{
+      :initial_version => binary(),
+      :negotiated_version => binary(),
+      :supported_versions => [binary()]
+    }
+  },
+  [
+    %{
+      :ack_delay => non_neg_integer(),
+      :acks => [non_neg_integer()],
+      :binary => binary(),
+      :challenge => binary(),
+      :conn_id => binary(),
+      :crypto_type =>
+        :cert_verify
+        | :certificate
+        | :client_hello
+        | :encrypted_exts
+        | :finished
+        | :server_hello,
+      :ecn_count => {non_neg_integer(), non_neg_integer(), non_neg_integer()},
+      :error_code => binary() | non_neg_integer(),
+      :error_message => binary(),
+      :largest => non_neg_integer(),
+      :length => non_neg_integer(),
+      :max_data => non_neg_integer(),
+      :max_stream_data => non_neg_integer(),
+      :max_stream_id => non_neg_integer(),
+      :offset => non_neg_integer(),
+      :retransmit => true,
+      :sequence => integer(),
+      :stream_id => non_neg_integer(),
+      :stream_owner => 0 | 1,
+      :stream_type => 0 | 1,
+      :token => binary(),
+      :type => atom()
+    },
+    ...
+  ]
+)
+________________________________________________________________________________
+src/quic_conn.erl:411:call
+The call:
+:quic_conn.encrypt_packet(
+  :short,
+  Data1 :: %{
+    :cc_info => map(),
+    :conn => %{
+      :address =>
+        {byte(), byte(), byte(), byte()}
+        | {char(), char(), char(), char(), char(), char(), char(), char()},
+      :dest_conn_ID => binary(),
+      :owner => pid(),
+      :port => char(),
+      :socket => port(),
+      :src_conn_ID => binary()
+    },
+    :crypto => %{
+      :cert => :undefined | binary(),
+      :cert_chain => [binary()],
+      :cert_priv_key => :undefined | binary(),
+      :cipher => :undefined | {atom(), atom()},
+      :client_early_iv => binary(),
+      :client_early_key => binary(),
+      :client_handshake_iv => binary(),
+      :client_handshake_key => binary(),
+      :client_handshake_secret => binary(),
+      :client_init_iv => binary(),
+      :client_init_key => binary(),
+      :client_init_secret => binary(),
+      :client_protected_iv => binary(),
+      :client_protected_key => binary(),
+      :client_protected_secret => binary(),
+      :group => _,
+      :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+      :handshake_secret => binary(),
+      :init_offsets => {non_neg_integer(), non_neg_integer()},
+      :init_secret => binary(),
+      :other_pub_key => _,
+      :pkt_num_handshake_secret => binary(),
+      :pkt_num_init_secret => binary(),
+      :pkt_num_protected_secret => binary(),
+      :priv_key => :undefined | binary(),
+      :protected_offsets => {non_neg_integer(), non_neg_integer()},
+      :protected_secret => binary(),
+      :pub_key => :undefined | binary(),
+      :server_handshake_iv => binary(),
+      :server_handshake_key => binary(),
+      :server_handshake_secret => binary(),
+      :server_init_iv => binary(),
+      :server_init_key => binary(),
+      :server_init_secret => binary(),
+      :server_protected_iv => binary(),
+      :server_protected_key => binary(),
+      :server_protected_secret => binary(),
+      :signature_alg => :undefined | {atom(), atom(), atom()},
+      :state => atom(),
+      :tls_version => :undefined | non_neg_integer(),
+      :transcript => binary()
+    },
+    :current_data => non_neg_integer(),
+    :params => %{
+      :ack_delay_exp => non_neg_integer(),
+      :idle_timeout => non_neg_integer(),
+      :init_max_bi_streams => non_neg_integer(),
+      :init_max_data => non_neg_integer(),
+      :init_max_stream_data => non_neg_integer(),
+      :init_max_uni_streams => non_neg_integer(),
+      :max_packet_size => non_neg_integer(),
+      :migration => boolean(),
+      :preferred_address => %{
+        :address =>
+          {byte(), byte(), byte(), byte()}
+          | {char(), char(), char(), char(), char(), char(), char(), char()},
+        :conn_id => binary(),
+        :port => char(),
+        :reset_token => binary()
+      },
+      :reset_token => binary()
+    },
+    :pkt_nums => map(),
+    :priority_num => non_neg_integer(),
+    :retry_token => binary(),
+    :send_queue => :quic_staging.staging(),
+    :timer_info => map(),
+    :type => :client | :server,
+    :version => %{
+      :initial_version => binary(),
+      :negotiated_version => binary(),
+      :supported_versions => [binary()]
+    },
+    :vx_module => atom()
+  },
+  Frames :: [
+    %{
+      :ack_delay => non_neg_integer(),
+      :acks => [non_neg_integer()],
+      :binary => binary(),
+      :challenge => binary(),
+      :conn_id => binary(),
+      :crypto_type =>
+        :cert_verify
+        | :certificate
+        | :client_hello
+        | :encrypted_exts
+        | :finished
+        | :server_hello,
+      :ecn_count => {non_neg_integer(), non_neg_integer(), non_neg_integer()},
+      :error_code => binary() | non_neg_integer(),
+      :error_message => binary(),
+      :largest => non_neg_integer(),
+      :length => non_neg_integer(),
+      :max_data => non_neg_integer(),
+      :max_stream_data => non_neg_integer(),
+      :max_stream_id => non_neg_integer(),
+      :offset => non_neg_integer(),
+      :retransmit => true,
+      :sequence => integer(),
+      :stream_id => non_neg_integer(),
+      :stream_owner => 0 | 1,
+      :stream_type => 0 | 1,
+      :token => binary(),
+      :type => atom()
+    },
+    ...
+  ],
+  Header :: binary(),
+  Payload :: binary(),
+  Pkt_Num :: {non_neg_integer(), binary()}
+)
+
+will never return since it differs in arguments with
+positions 1 from the success typing arguments:
+
+(
+  :handshake | :initial,
+  %{
+    :crypto => %{
+      :cert => :undefined | binary(),
+      :cert_chain => [binary()],
+      :cert_priv_key => :undefined | binary(),
+      :cipher => :undefined | {atom(), atom()},
+      :client_early_iv => binary(),
+      :client_early_key => binary(),
+      :client_handshake_iv => binary(),
+      :client_handshake_key => binary(),
+      :client_handshake_secret => binary(),
+      :client_init_iv => binary(),
+      :client_init_key => binary(),
+      :client_init_secret => binary(),
+      :client_protected_iv => binary(),
+      :client_protected_key => binary(),
+      :client_protected_secret => binary(),
+      :group => _,
+      :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+      :handshake_secret => binary(),
+      :init_offsets => {non_neg_integer(), non_neg_integer()},
+      :init_secret => binary(),
+      :other_pub_key => _,
+      :pkt_num_handshake_secret => binary(),
+      :pkt_num_init_secret => binary(),
+      :pkt_num_protected_secret => binary(),
+      :priv_key => :undefined | binary(),
+      :protected_offsets => {non_neg_integer(), non_neg_integer()},
+      :protected_secret => binary(),
+      :pub_key => :undefined | binary(),
+      :server_handshake_iv => binary(),
+      :server_handshake_key => binary(),
+      :server_handshake_secret => binary(),
+      :server_init_iv => binary(),
+      :server_init_key => binary(),
+      :server_init_secret => binary(),
+      :server_protected_iv => binary(),
+      :server_protected_key => binary(),
+      :server_protected_secret => binary(),
+      :signature_alg => :undefined | {atom(), atom(), atom()},
+      :state => atom(),
+      :tls_version => :undefined | non_neg_integer(),
+      :transcript => binary()
+    },
+    :type => :client | :server,
+    :cc_info => map(),
+    :conn => %{
+      :address =>
+        {byte(), byte(), byte(), byte()}
+        | {char(), char(), char(), char(), char(), char(), char(), char()},
+      :dest_conn_ID => binary(),
+      :owner => pid(),
+      :port => char(),
+      :socket => port(),
+      :src_conn_ID => binary()
+    },
+    :current_data => non_neg_integer(),
+    :params => %{
+      :ack_delay_exp => non_neg_integer(),
+      :idle_timeout => non_neg_integer(),
+      :init_max_bi_streams => non_neg_integer(),
+      :init_max_data => non_neg_integer(),
+      :init_max_stream_data => non_neg_integer(),
+      :init_max_uni_streams => non_neg_integer(),
+      :max_packet_size => non_neg_integer(),
+      :migration => boolean(),
+      :preferred_address => %{
+        :address => {_, _, _, _} | {_, _, _, _, _, _, _, _},
+        :conn_id => binary(),
+        :port => char(),
+        :reset_token => binary()
+      },
+      :reset_token => binary()
+    },
+    :pkt_nums => map(),
+    :priority_num => non_neg_integer(),
+    :retry_token => binary(),
+    :send_queue => :quic_staging.staging(),
+    :timer_info => map(),
+    :version => %{
+      :initial_version => binary(),
+      :negotiated_version => binary(),
+      :supported_versions => [binary()]
+    },
+    :vx_module => atom()
+  },
+  [
+    %{
+      :ack_delay => non_neg_integer(),
+      :acks => [non_neg_integer()],
+      :binary => binary(),
+      :challenge => binary(),
+      :conn_id => binary(),
+      :crypto_type =>
+        :cert_verify
+        | :certificate
+        | :client_hello
+        | :encrypted_exts
+        | :finished
+        | :server_hello,
+      :ecn_count => {non_neg_integer(), non_neg_integer(), non_neg_integer()},
+      :error_code => binary() | non_neg_integer(),
+      :error_message => binary(),
+      :largest => non_neg_integer(),
+      :length => non_neg_integer(),
+      :max_data => non_neg_integer(),
+      :max_stream_data => non_neg_integer(),
+      :max_stream_id => non_neg_integer(),
+      :offset => non_neg_integer(),
+      :retransmit => true,
+      :sequence => integer(),
+      :stream_id => non_neg_integer(),
+      :stream_owner => 0 | 1,
+      :stream_type => 0 | 1,
+      :token => binary(),
+      :type => atom()
+    },
+    ...
+  ],
+  binary(),
+  binary(),
+  {non_neg_integer(), binary()}
+)
+________________________________________________________________________________
+src/quic_conn.erl:415:call
+The call:
+:quic_conn.encrypt_packet(
+  :early_data,
+  Data1 :: %{
+    :cc_info => map(),
+    :conn => %{
+      :address =>
+        {byte(), byte(), byte(), byte()}
+        | {char(), char(), char(), char(), char(), char(), char(), char()},
+      :dest_conn_ID => binary(),
+      :owner => pid(),
+      :port => char(),
+      :socket => port(),
+      :src_conn_ID => binary()
+    },
+    :crypto => %{
+      :cert => :undefined | binary(),
+      :cert_chain => [binary()],
+      :cert_priv_key => :undefined | binary(),
+      :cipher => :undefined | {atom(), atom()},
+      :client_early_iv => binary(),
+      :client_early_key => binary(),
+      :client_handshake_iv => binary(),
+      :client_handshake_key => binary(),
+      :client_handshake_secret => binary(),
+      :client_init_iv => binary(),
+      :client_init_key => binary(),
+      :client_init_secret => binary(),
+      :client_protected_iv => binary(),
+      :client_protected_key => binary(),
+      :client_protected_secret => binary(),
+      :group => _,
+      :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+      :handshake_secret => binary(),
+      :init_offsets => {non_neg_integer(), non_neg_integer()},
+      :init_secret => binary(),
+      :other_pub_key => _,
+      :pkt_num_handshake_secret => binary(),
+      :pkt_num_init_secret => binary(),
+      :pkt_num_protected_secret => binary(),
+      :priv_key => :undefined | binary(),
+      :protected_offsets => {non_neg_integer(), non_neg_integer()},
+      :protected_secret => binary(),
+      :pub_key => :undefined | binary(),
+      :server_handshake_iv => binary(),
+      :server_handshake_key => binary(),
+      :server_handshake_secret => binary(),
+      :server_init_iv => binary(),
+      :server_init_key => binary(),
+      :server_init_secret => binary(),
+      :server_protected_iv => binary(),
+      :server_protected_key => binary(),
+      :server_protected_secret => binary(),
+      :signature_alg => :undefined | {atom(), atom(), atom()},
+      :state => atom(),
+      :tls_version => :undefined | non_neg_integer(),
+      :transcript => binary()
+    },
+    :current_data => non_neg_integer(),
+    :params => %{
+      :ack_delay_exp => non_neg_integer(),
+      :idle_timeout => non_neg_integer(),
+      :init_max_bi_streams => non_neg_integer(),
+      :init_max_data => non_neg_integer(),
+      :init_max_stream_data => non_neg_integer(),
+      :init_max_uni_streams => non_neg_integer(),
+      :max_packet_size => non_neg_integer(),
+      :migration => boolean(),
+      :preferred_address => %{
+        :address =>
+          {byte(), byte(), byte(), byte()}
+          | {char(), char(), char(), char(), char(), char(), char(), char()},
+        :conn_id => binary(),
+        :port => char(),
+        :reset_token => binary()
+      },
+      :reset_token => binary()
+    },
+    :pkt_nums => map(),
+    :priority_num => non_neg_integer(),
+    :retry_token => binary(),
+    :send_queue => :quic_staging.staging(),
+    :timer_info => map(),
+    :type => :client | :server,
+    :version => %{
+      :initial_version => binary(),
+      :negotiated_version => binary(),
+      :supported_versions => [binary()]
+    },
+    :vx_module => atom()
+  },
+  Frames :: [
+    %{
+      :ack_delay => non_neg_integer(),
+      :acks => [non_neg_integer()],
+      :binary => binary(),
+      :challenge => binary(),
+      :conn_id => binary(),
+      :crypto_type =>
+        :cert_verify
+        | :certificate
+        | :client_hello
+        | :encrypted_exts
+        | :finished
+        | :server_hello,
+      :ecn_count => {non_neg_integer(), non_neg_integer(), non_neg_integer()},
+      :error_code => binary() | non_neg_integer(),
+      :error_message => binary(),
+      :largest => non_neg_integer(),
+      :length => non_neg_integer(),
+      :max_data => non_neg_integer(),
+      :max_stream_data => non_neg_integer(),
+      :max_stream_id => non_neg_integer(),
+      :offset => non_neg_integer(),
+      :retransmit => true,
+      :sequence => integer(),
+      :stream_id => non_neg_integer(),
+      :stream_owner => 0 | 1,
+      :stream_type => 0 | 1,
+      :token => binary(),
+      :type => atom()
+    },
+    ...
+  ],
+  Header :: binary(),
+  Payload :: binary(),
+  Pkt_Num :: {non_neg_integer(), binary()}
+)
+
+will never return since it differs in arguments with
+positions 1 from the success typing arguments:
+
+(
+  :handshake | :initial,
+  %{
+    :crypto => %{
+      :cert => :undefined | binary(),
+      :cert_chain => [binary()],
+      :cert_priv_key => :undefined | binary(),
+      :cipher => :undefined | {atom(), atom()},
+      :client_early_iv => binary(),
+      :client_early_key => binary(),
+      :client_handshake_iv => binary(),
+      :client_handshake_key => binary(),
+      :client_handshake_secret => binary(),
+      :client_init_iv => binary(),
+      :client_init_key => binary(),
+      :client_init_secret => binary(),
+      :client_protected_iv => binary(),
+      :client_protected_key => binary(),
+      :client_protected_secret => binary(),
+      :group => _,
+      :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+      :handshake_secret => binary(),
+      :init_offsets => {non_neg_integer(), non_neg_integer()},
+      :init_secret => binary(),
+      :other_pub_key => _,
+      :pkt_num_handshake_secret => binary(),
+      :pkt_num_init_secret => binary(),
+      :pkt_num_protected_secret => binary(),
+      :priv_key => :undefined | binary(),
+      :protected_offsets => {non_neg_integer(), non_neg_integer()},
+      :protected_secret => binary(),
+      :pub_key => :undefined | binary(),
+      :server_handshake_iv => binary(),
+      :server_handshake_key => binary(),
+      :server_handshake_secret => binary(),
+      :server_init_iv => binary(),
+      :server_init_key => binary(),
+      :server_init_secret => binary(),
+      :server_protected_iv => binary(),
+      :server_protected_key => binary(),
+      :server_protected_secret => binary(),
+      :signature_alg => :undefined | {atom(), atom(), atom()},
+      :state => atom(),
+      :tls_version => :undefined | non_neg_integer(),
+      :transcript => binary()
+    },
+    :type => :client | :server,
+    :cc_info => map(),
+    :conn => %{
+      :address =>
+        {byte(), byte(), byte(), byte()}
+        | {char(), char(), char(), char(), char(), char(), char(), char()},
+      :dest_conn_ID => binary(),
+      :owner => pid(),
+      :port => char(),
+      :socket => port(),
+      :src_conn_ID => binary()
+    },
+    :current_data => non_neg_integer(),
+    :params => %{
+      :ack_delay_exp => non_neg_integer(),
+      :idle_timeout => non_neg_integer(),
+      :init_max_bi_streams => non_neg_integer(),
+      :init_max_data => non_neg_integer(),
+      :init_max_stream_data => non_neg_integer(),
+      :init_max_uni_streams => non_neg_integer(),
+      :max_packet_size => non_neg_integer(),
+      :migration => boolean(),
+      :preferred_address => %{
+        :address => {_, _, _, _} | {_, _, _, _, _, _, _, _},
+        :conn_id => binary(),
+        :port => char(),
+        :reset_token => binary()
+      },
+      :reset_token => binary()
+    },
+    :pkt_nums => map(),
+    :priority_num => non_neg_integer(),
+    :retry_token => binary(),
+    :send_queue => :quic_staging.staging(),
+    :timer_info => map(),
+    :version => %{
+      :initial_version => binary(),
+      :negotiated_version => binary(),
+      :supported_versions => [binary()]
+    },
+    :vx_module => atom()
+  },
+  [
+    %{
+      :ack_delay => non_neg_integer(),
+      :acks => [non_neg_integer()],
+      :binary => binary(),
+      :challenge => binary(),
+      :conn_id => binary(),
+      :crypto_type =>
+        :cert_verify
+        | :certificate
+        | :client_hello
+        | :encrypted_exts
+        | :finished
+        | :server_hello,
+      :ecn_count => {non_neg_integer(), non_neg_integer(), non_neg_integer()},
+      :error_code => binary() | non_neg_integer(),
+      :error_message => binary(),
+      :largest => non_neg_integer(),
+      :length => non_neg_integer(),
+      :max_data => non_neg_integer(),
+      :max_stream_data => non_neg_integer(),
+      :max_stream_id => non_neg_integer(),
+      :offset => non_neg_integer(),
+      :retransmit => true,
+      :sequence => integer(),
+      :stream_id => non_neg_integer(),
+      :stream_owner => 0 | 1,
+      :stream_type => 0 | 1,
+      :token => binary(),
+      :type => atom()
+    },
+    ...
+  ],
+  binary(),
+  binary(),
+  {non_neg_integer(), binary()}
+)
+________________________________________________________________________________
+src/quic_conn.erl:491:pattern_match
 The pattern
-:invalid
+{:ok, :Data1, Header_Info = {:initial, _Token, _Payload_Length, _Header_Length}}
 
 can never match the type
-:ok
+
+  {:error, :invalid_header | :invalid_initial | :protocol_violation}
+  | {:ok,
+     %{
+       :conn => %{
+         :address =>
+           {byte(), byte(), byte(), byte()}
+           | {char(), char(), char(), char(), char(), char(), char(), char()},
+         :dest_conn_ID => binary(),
+         :owner => pid(),
+         :port => char(),
+         :socket => port(),
+         :src_conn_ID => binary()
+       },
+       :version => %{
+         :initial_version => binary(),
+         :negotiated_version => binary(),
+         :supported_versions => [binary()]
+       },
+       :cc_info => map(),
+       :crypto => %{
+         :cert => :undefined | binary(),
+         :cert_chain => [binary()],
+         :cert_priv_key => :undefined | binary(),
+         :cipher => :undefined | {atom(), atom()},
+         :client_early_iv => binary(),
+         :client_early_key => binary(),
+         :client_handshake_iv => binary(),
+         :client_handshake_key => binary(),
+         :client_handshake_secret => binary(),
+         :client_init_iv => binary(),
+         :client_init_key => binary(),
+         :client_init_secret => binary(),
+         :client_protected_iv => binary(),
+         :client_protected_key => binary(),
+         :client_protected_secret => binary(),
+         :group => _,
+         :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+         :handshake_secret => binary(),
+         :init_offsets => {non_neg_integer(), non_neg_integer()},
+         :init_secret => binary(),
+         :other_pub_key => _,
+         :pkt_num_handshake_secret => binary(),
+         :pkt_num_init_secret => binary(),
+         :pkt_num_protected_secret => binary(),
+         :priv_key => :undefined | binary(),
+         :protected_offsets => {non_neg_integer(), non_neg_integer()},
+         :protected_secret => binary(),
+         :pub_key => :undefined | binary(),
+         :server_handshake_iv => binary(),
+         :server_handshake_key => binary(),
+         :server_handshake_secret => binary(),
+         :server_init_iv => binary(),
+         :server_init_key => binary(),
+         :server_init_secret => binary(),
+         :server_protected_iv => binary(),
+         :server_protected_key => binary(),
+         :server_protected_secret => binary(),
+         :signature_alg => :undefined | {atom(), atom(), atom()},
+         :state => atom(),
+         :tls_version => :undefined | non_neg_integer(),
+         :transcript => binary()
+       },
+       :current_data => non_neg_integer(),
+       :params => %{
+         :ack_delay_exp => non_neg_integer(),
+         :idle_timeout => non_neg_integer(),
+         :init_max_bi_streams => non_neg_integer(),
+         :init_max_data => non_neg_integer(),
+         :init_max_stream_data => non_neg_integer(),
+         :init_max_uni_streams => non_neg_integer(),
+         :max_packet_size => non_neg_integer(),
+         :migration => boolean(),
+         :preferred_address => %{
+           :address =>
+             {byte(), byte(), byte(), byte()}
+             | {char(), char(), char(), char(), char(), char(), char(), char()},
+           :conn_id => binary(),
+           :port => char(),
+           :reset_token => binary()
+         },
+         :reset_token => binary()
+       },
+       :pkt_nums => map(),
+       :priority_num => non_neg_integer(),
+       :retry_token => binary(),
+       :send_queue => :quic_staging.staging(),
+       :timer_info => map(),
+       :type => :client | :server,
+       :vx_module => atom()
+     }}
+  | {:ok,
+     %{
+       :conn => %{
+         :address =>
+           {byte(), byte(), byte(), byte()}
+           | {char(), char(), char(), char(), char(), char(), char(), char()},
+         :dest_conn_ID => binary(),
+         :owner => pid(),
+         :port => char(),
+         :socket => port(),
+         :src_conn_ID => binary()
+       },
+       :cc_info => map(),
+       :crypto => %{
+         :cert => :undefined | binary(),
+         :cert_chain => [binary()],
+         :cert_priv_key => :undefined | binary(),
+         :cipher => :undefined | {atom(), atom()},
+         :client_early_iv => binary(),
+         :client_early_key => binary(),
+         :client_handshake_iv => binary(),
+         :client_handshake_key => binary(),
+         :client_handshake_secret => binary(),
+         :client_init_iv => binary(),
+         :client_init_key => binary(),
+         :client_init_secret => binary(),
+         :client_protected_iv => binary(),
+         :client_protected_key => binary(),
+         :client_protected_secret => binary(),
+         :group => _,
+         :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+         :handshake_secret => binary(),
+         :init_offsets => {non_neg_integer(), non_neg_integer()},
+         :init_secret => binary(),
+         :other_pub_key => _,
+         :pkt_num_handshake_secret => binary(),
+         :pkt_num_init_secret => binary(),
+         :pkt_num_protected_secret => binary(),
+         :priv_key => :undefined | binary(),
+         :protected_offsets => {non_neg_integer(), non_neg_integer()},
+         :protected_secret => binary(),
+         :pub_key => :undefined | binary(),
+         :server_handshake_iv => binary(),
+         :server_handshake_key => binary(),
+         :server_handshake_secret => binary(),
+         :server_init_iv => binary(),
+         :server_init_key => binary(),
+         :server_init_secret => binary(),
+         :server_protected_iv => binary(),
+         :server_protected_key => binary(),
+         :server_protected_secret => binary(),
+         :signature_alg => :undefined | {atom(), atom(), atom()},
+         :state => atom(),
+         :tls_version => :undefined | non_neg_integer(),
+         :transcript => binary()
+       },
+       :current_data => non_neg_integer(),
+       :params => %{
+         :ack_delay_exp => non_neg_integer(),
+         :idle_timeout => non_neg_integer(),
+         :init_max_bi_streams => non_neg_integer(),
+         :init_max_data => non_neg_integer(),
+         :init_max_stream_data => non_neg_integer(),
+         :init_max_uni_streams => non_neg_integer(),
+         :max_packet_size => non_neg_integer(),
+         :migration => boolean(),
+         :preferred_address => %{
+           :address =>
+             {byte(), byte(), byte(), byte()}
+             | {char(), char(), char(), char(), char(), char(), char(), char()},
+           :conn_id => binary(),
+           :port => char(),
+           :reset_token => binary()
+         },
+         :reset_token => binary()
+       },
+       :pkt_nums => map(),
+       :priority_num => non_neg_integer(),
+       :retry_token => binary(),
+       :send_queue => :quic_staging.staging(),
+       :timer_info => map(),
+       :type => :client | :server,
+       :version => %{
+         :initial_version => binary(),
+         :negotiated_version => binary(),
+         :supported_versions => [binary()]
+       },
+       :vx_module => atom()
+     },
+     {:retry, {_, _, _}}
+     | {:vx_neg, [binary()]}
+     | {:early_data, non_neg_integer(), pos_integer()}
+     | {:handshake, non_neg_integer(), pos_integer()}
+     | {:short, 1, non_neg_integer()}}
 ________________________________________________________________________________
-src/quic_statem.erl:40:no_return
-Function init/1 has no local return.
+src/quic_conn.erl:515:unused_fun
+Function validate_token/1 will never be called.
 ________________________________________________________________________________
-Please file a bug in https://github.com/jeremyjh/dialyxir/issues with this message.
+src/quic_conn.erl:550:unused_fun
+Function handle_initial/4 will never be called.
+________________________________________________________________________________
+src/quic_packet.erl:282:invalid_contract
+Invalid type specification for function.
 
-Failed to parse warning:
-[{:"(", 1}, {:atom_part, 1, 'K'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'y'}, {:",", 1}, {:atom_part, 1, 'M'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'p'}, {:",", 1}, {:atom_part, 1, 'D'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'f'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 't'}, {:")", 1}, {:->, 1}, {:atom_part, 1, 'V'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'e'}, {:|, 1}, {:atom_part, 1, 'D'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'f'}, {:atom_part, 1, 'a'}, {:atom_part, 1, 'u'}, {:atom_part, 1, 'l'}, {:atom_part, 1, 't'}, {:atom_part, 1, 'w'}, {:atom_part, 1, 'h'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'n'}, {:atom_part, 1, 'K'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'y'}, {:::, 1}, {:atom_part, 1, 't'}, {:atom_part, 1, 'e'}, {:atom_part, 1, 'r'}, {:atom_part, 1, 'm'}, {:"(", 1}, {:")", 1}, {:",", 1}, {:atom_part, 1, 'M'}, {:atom_part, 1, ...}, {:atom_part, ...}, {...}, ...]
+Function:
+:quic_packet.parse_token/5
+
+Success typing:
+@spec parse_token(
+  <<_::6, _::size(8)>>,
+  %{
+    :conn => %{
+      :dest_conn_ID => binary(),
+      :src_conn_ID => binary(),
+      :address =>
+        {byte(), byte(), byte(), byte()}
+        | {char(), char(), char(), char(), char(), char(), char(), char()},
+      :owner => pid(),
+      :port => char(),
+      :socket => port()
+    },
+    :cc_info => map(),
+    :crypto => %{
+      :cert => :undefined | binary(),
+      :cert_chain => [binary()],
+      :cert_priv_key => :undefined | binary(),
+      :cipher => :undefined | {atom(), atom()},
+      :client_early_iv => binary(),
+      :client_early_key => binary(),
+      :client_handshake_iv => binary(),
+      :client_handshake_key => binary(),
+      :client_handshake_secret => binary(),
+      :client_init_iv => binary(),
+      :client_init_key => binary(),
+      :client_init_secret => binary(),
+      :client_protected_iv => binary(),
+      :client_protected_key => binary(),
+      :client_protected_secret => binary(),
+      :group => _,
+      :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+      :handshake_secret => binary(),
+      :init_offsets => {non_neg_integer(), non_neg_integer()},
+      :init_secret => binary(),
+      :other_pub_key => _,
+      :pkt_num_handshake_secret => binary(),
+      :pkt_num_init_secret => binary(),
+      :pkt_num_protected_secret => binary(),
+      :priv_key => :undefined | binary(),
+      :protected_offsets => {non_neg_integer(), non_neg_integer()},
+      :protected_secret => binary(),
+      :pub_key => :undefined | binary(),
+      :server_handshake_iv => binary(),
+      :server_handshake_key => binary(),
+      :server_handshake_secret => binary(),
+      :server_init_iv => binary(),
+      :server_init_key => binary(),
+      :server_init_secret => binary(),
+      :server_protected_iv => binary(),
+      :server_protected_key => binary(),
+      :server_protected_secret => binary(),
+      :signature_alg => :undefined | {atom(), atom(), atom()},
+      :state => atom(),
+      :tls_version => :undefined | non_neg_integer(),
+      :transcript => binary()
+    },
+    :current_data => non_neg_integer(),
+    :params => %{
+      :ack_delay_exp => non_neg_integer(),
+      :idle_timeout => non_neg_integer(),
+      :init_max_bi_streams => non_neg_integer(),
+      :init_max_data => non_neg_integer(),
+      :init_max_stream_data => non_neg_integer(),
+      :init_max_uni_streams => non_neg_integer(),
+      :max_packet_size => non_neg_integer(),
+      :migration => boolean(),
+      :preferred_address => %{
+        :address => {_, _, _, _} | {_, _, _, _, _, _, _, _},
+        :conn_id => binary(),
+        :port => char(),
+        :reset_token => binary()
+      },
+      :reset_token => binary()
+    },
+    :pkt_nums => map(),
+    :priority_num => non_neg_integer(),
+    :retry_token => binary(),
+    :send_queue => :quic_staging.staging(),
+    :timer_info => map(),
+    :type => :client | :server,
+    :version => %{
+      :initial_version => binary(),
+      :negotiated_version => binary(),
+      :supported_versions => [binary()]
+    },
+    :vx_module => atom()
+  },
+  :initial,
+  6 | 14 | 30 | 62,
+  pos_integer()
+) ::
+  {:ok,
+   %{
+     :conn => %{
+       :dest_conn_ID => binary(),
+       :src_conn_ID => binary(),
+       :address => {_, _, _, _} | {_, _, _, _, _, _, _, _},
+       :owner => pid(),
+       :port => char(),
+       :socket => port()
+     },
+     :cc_info => map(),
+     :crypto => %{
+       :cert => :undefined | binary(),
+       :cert_chain => [any()],
+       :cert_priv_key => :undefined | binary(),
+       :cipher => :undefined | {_, _},
+       :client_early_iv => binary(),
+       :client_early_key => binary(),
+       :client_handshake_iv => binary(),
+       :client_handshake_key => binary(),
+       :client_handshake_secret => binary(),
+       :client_init_iv => binary(),
+       :client_init_key => binary(),
+       :client_init_secret => binary(),
+       :client_protected_iv => binary(),
+       :client_protected_key => binary(),
+       :client_protected_secret => binary(),
+       :group => _,
+       :handshake_offsets => {_, _},
+       :handshake_secret => binary(),
+       :init_offsets => {_, _},
+       :init_secret => binary(),
+       :other_pub_key => _,
+       :pkt_num_handshake_secret => binary(),
+       :pkt_num_init_secret => binary(),
+       :pkt_num_protected_secret => binary(),
+       :priv_key => :undefined | binary(),
+       :protected_offsets => {_, _},
+       :protected_secret => binary(),
+       :pub_key => :undefined | binary(),
+       :server_handshake_iv => binary(),
+       :server_handshake_key => binary(),
+       :server_handshake_secret => binary(),
+       :server_init_iv => binary(),
+       :server_init_key => binary(),
+       :server_init_secret => binary(),
+       :server_protected_iv => binary(),
+       :server_protected_key => binary(),
+       :server_protected_secret => binary(),
+       :signature_alg => :undefined | {_, _, _},
+       :state => atom(),
+       :tls_version => :undefined | non_neg_integer(),
+       :transcript => binary()
+     },
+     :current_data => non_neg_integer(),
+     :params => %{
+       :ack_delay_exp => non_neg_integer(),
+       :idle_timeout => non_neg_integer(),
+       :init_max_bi_streams => non_neg_integer(),
+       :init_max_data => non_neg_integer(),
+       :init_max_stream_data => non_neg_integer(),
+       :init_max_uni_streams => non_neg_integer(),
+       :max_packet_size => non_neg_integer(),
+       :migration => boolean(),
+       :preferred_address => map(),
+       :reset_token => binary()
+     },
+     :pkt_nums => map(),
+     :priority_num => non_neg_integer(),
+     :retry_token => binary(),
+     :send_queue => :quic_staging.staging(),
+     :timer_info => map(),
+     :type => :client | :server,
+     :version => %{
+       :initial_version => binary(),
+       :negotiated_version => binary(),
+       :supported_versions => [any()]
+     },
+     :vx_module => atom()
+   },
+   {:early_data, non_neg_integer(), pos_integer()}
+   | {:handshake, non_neg_integer(), pos_integer()}}
+________________________________________________________________________________
+src/quic_packet.erl:298:invalid_contract
+Invalid type specification for function.
+
+Function:
+:quic_packet.parse_token_/5
+
+Success typing:
+@spec parse_token_(
+  bitstring(),
+  %{
+    :conn => %{
+      :dest_conn_ID => binary(),
+      :src_conn_ID => binary(),
+      :address =>
+        {byte(), byte(), byte(), byte()}
+        | {char(), char(), char(), char(), char(), char(), char(), char()},
+      :owner => pid(),
+      :port => char(),
+      :socket => port()
+    },
+    :cc_info => map(),
+    :crypto => %{
+      :cert => :undefined | binary(),
+      :cert_chain => [binary()],
+      :cert_priv_key => :undefined | binary(),
+      :cipher => :undefined | {atom(), atom()},
+      :client_early_iv => binary(),
+      :client_early_key => binary(),
+      :client_handshake_iv => binary(),
+      :client_handshake_key => binary(),
+      :client_handshake_secret => binary(),
+      :client_init_iv => binary(),
+      :client_init_key => binary(),
+      :client_init_secret => binary(),
+      :client_protected_iv => binary(),
+      :client_protected_key => binary(),
+      :client_protected_secret => binary(),
+      :group => _,
+      :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+      :handshake_secret => binary(),
+      :init_offsets => {non_neg_integer(), non_neg_integer()},
+      :init_secret => binary(),
+      :other_pub_key => _,
+      :pkt_num_handshake_secret => binary(),
+      :pkt_num_init_secret => binary(),
+      :pkt_num_protected_secret => binary(),
+      :priv_key => :undefined | binary(),
+      :protected_offsets => {non_neg_integer(), non_neg_integer()},
+      :protected_secret => binary(),
+      :pub_key => :undefined | binary(),
+      :server_handshake_iv => binary(),
+      :server_handshake_key => binary(),
+      :server_handshake_secret => binary(),
+      :server_init_iv => binary(),
+      :server_init_key => binary(),
+      :server_init_secret => binary(),
+      :server_protected_iv => binary(),
+      :server_protected_key => binary(),
+      :server_protected_secret => binary(),
+      :signature_alg => :undefined | {atom(), atom(), atom()},
+      :state => atom(),
+      :tls_version => :undefined | non_neg_integer(),
+      :transcript => binary()
+    },
+    :current_data => non_neg_integer(),
+    :params => %{
+      :ack_delay_exp => non_neg_integer(),
+      :idle_timeout => non_neg_integer(),
+      :init_max_bi_streams => non_neg_integer(),
+      :init_max_data => non_neg_integer(),
+      :init_max_stream_data => non_neg_integer(),
+      :init_max_uni_streams => non_neg_integer(),
+      :max_packet_size => non_neg_integer(),
+      :migration => boolean(),
+      :preferred_address => %{
+        :address => {_, _, _, _} | {_, _, _, _, _, _, _, _},
+        :conn_id => binary(),
+        :port => char(),
+        :reset_token => binary()
+      },
+      :reset_token => binary()
+    },
+    :pkt_nums => map(),
+    :priority_num => non_neg_integer(),
+    :retry_token => binary(),
+    :send_queue => :quic_staging.staging(),
+    :timer_info => map(),
+    :type => :client | :server,
+    :version => %{
+      :initial_version => binary(),
+      :negotiated_version => binary(),
+      :supported_versions => [binary()]
+    },
+    :vx_module => atom()
+  },
+  :initial,
+  non_neg_integer(),
+  pos_integer()
+) ::
+  {:ok,
+   %{
+     :conn => %{
+       :dest_conn_ID => binary(),
+       :src_conn_ID => binary(),
+       :address => {_, _, _, _} | {_, _, _, _, _, _, _, _},
+       :owner => pid(),
+       :port => char(),
+       :socket => port()
+     },
+     :cc_info => map(),
+     :crypto => %{
+       :cert => :undefined | binary(),
+       :cert_chain => [any()],
+       :cert_priv_key => :undefined | binary(),
+       :cipher => :undefined | {_, _},
+       :client_early_iv => binary(),
+       :client_early_key => binary(),
+       :client_handshake_iv => binary(),
+       :client_handshake_key => binary(),
+       :client_handshake_secret => binary(),
+       :client_init_iv => binary(),
+       :client_init_key => binary(),
+       :client_init_secret => binary(),
+       :client_protected_iv => binary(),
+       :client_protected_key => binary(),
+       :client_protected_secret => binary(),
+       :group => _,
+       :handshake_offsets => {_, _},
+       :handshake_secret => binary(),
+       :init_offsets => {_, _},
+       :init_secret => binary(),
+       :other_pub_key => _,
+       :pkt_num_handshake_secret => binary(),
+       :pkt_num_init_secret => binary(),
+       :pkt_num_protected_secret => binary(),
+       :priv_key => :undefined | binary(),
+       :protected_offsets => {_, _},
+       :protected_secret => binary(),
+       :pub_key => :undefined | binary(),
+       :server_handshake_iv => binary(),
+       :server_handshake_key => binary(),
+       :server_handshake_secret => binary(),
+       :server_init_iv => binary(),
+       :server_init_key => binary(),
+       :server_init_secret => binary(),
+       :server_protected_iv => binary(),
+       :server_protected_key => binary(),
+       :server_protected_secret => binary(),
+       :signature_alg => :undefined | {_, _, _},
+       :state => atom(),
+       :tls_version => :undefined | non_neg_integer(),
+       :transcript => binary()
+     },
+     :current_data => non_neg_integer(),
+     :params => %{
+       :ack_delay_exp => non_neg_integer(),
+       :idle_timeout => non_neg_integer(),
+       :init_max_bi_streams => non_neg_integer(),
+       :init_max_data => non_neg_integer(),
+       :init_max_stream_data => non_neg_integer(),
+       :init_max_uni_streams => non_neg_integer(),
+       :max_packet_size => non_neg_integer(),
+       :migration => boolean(),
+       :preferred_address => map(),
+       :reset_token => binary()
+     },
+     :pkt_nums => map(),
+     :priority_num => non_neg_integer(),
+     :retry_token => binary(),
+     :send_queue => :quic_staging.staging(),
+     :timer_info => map(),
+     :type => :client | :server,
+     :version => %{
+       :initial_version => binary(),
+       :negotiated_version => binary(),
+       :supported_versions => [any()]
+     },
+     :vx_module => atom()
+   },
+   {:early_data, non_neg_integer(), pos_integer()}
+   | {:handshake, non_neg_integer(), pos_integer()}}
+________________________________________________________________________________
+src/quic_statem.erl:61:callback_spec_type_mismatch
+The @spec return type for does not match the expected return type
+for handle_event/4 callback  in :gen_statem behaviour.
+
+Actual:
+@spec handle_event(...) :: 
+  {:keep_state,
+   %{
+     :cc_info => map(),
+     :conn => %{
+       :address =>
+         {byte(), byte(), byte(), byte()}
+         | {char(), char(), char(), char(), char(), char(), char(), char()},
+       :dest_conn_ID => binary(),
+       :owner => pid(),
+       :port => char(),
+       :socket => port(),
+       :src_conn_ID => binary()
+     },
+     :crypto => %{
+       :cert => :undefined | binary(),
+       :cert_chain => [binary()],
+       :cert_priv_key => :undefined | binary(),
+       :cipher => :undefined | {atom(), atom()},
+       :client_early_iv => binary(),
+       :client_early_key => binary(),
+       :client_handshake_iv => binary(),
+       :client_handshake_key => binary(),
+       :client_handshake_secret => binary(),
+       :client_init_iv => binary(),
+       :client_init_key => binary(),
+       :client_init_secret => binary(),
+       :client_protected_iv => binary(),
+       :client_protected_key => binary(),
+       :client_protected_secret => binary(),
+       :group => _,
+       :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+       :handshake_secret => binary(),
+       :init_offsets => {non_neg_integer(), non_neg_integer()},
+       :init_secret => binary(),
+       :other_pub_key => _,
+       :pkt_num_handshake_secret => binary(),
+       :pkt_num_init_secret => binary(),
+       :pkt_num_protected_secret => binary(),
+       :priv_key => :undefined | binary(),
+       :protected_offsets => {non_neg_integer(), non_neg_integer()},
+       :protected_secret => binary(),
+       :pub_key => :undefined | binary(),
+       :server_handshake_iv => binary(),
+       :server_handshake_key => binary(),
+       :server_handshake_secret => binary(),
+       :server_init_iv => binary(),
+       :server_init_key => binary(),
+       :server_init_secret => binary(),
+       :server_protected_iv => binary(),
+       :server_protected_key => binary(),
+       :server_protected_secret => binary(),
+       :signature_alg => :undefined | {atom(), atom(), atom()},
+       :state => atom(),
+       :tls_version => :undefined | non_neg_integer(),
+       :transcript => binary()
+     },
+     :current_data => non_neg_integer(),
+     :params => %{
+       :ack_delay_exp => non_neg_integer(),
+       :idle_timeout => non_neg_integer(),
+       :init_max_bi_streams => non_neg_integer(),
+       :init_max_data => non_neg_integer(),
+       :init_max_stream_data => non_neg_integer(),
+       :init_max_uni_streams => non_neg_integer(),
+       :max_packet_size => non_neg_integer(),
+       :migration => boolean(),
+       :preferred_address => %{
+         :address =>
+           {byte(), byte(), byte(), byte()}
+           | {char(), char(), char(), char(), char(), char(), char(), char()},
+         :conn_id => binary(),
+         :port => char(),
+         :reset_token => binary()
+       },
+       :reset_token => binary()
+     },
+     :pkt_nums => map(),
+     :priority_num => non_neg_integer(),
+     :retry_token => binary(),
+     :send_queue => :quic_staging.staging(),
+     :timer_info => map(),
+     :type => :client | :server,
+     :version => %{
+       :initial_version => binary(),
+       :negotiated_version => binary(),
+       :supported_versions => [binary()]
+     },
+     :vx_module => atom()
+   }, _}
+  | {:stop_and_reply, :normal, {:reply, pid(), {:protocol_violation, _}},
+     %{
+       :cc_info => map(),
+       :conn => %{
+         :address =>
+           {byte(), byte(), byte(), byte()}
+           | {char(), char(), char(), char(), char(), char(), char(), char()},
+         :dest_conn_ID => binary(),
+         :owner => pid(),
+         :port => char(),
+         :socket => port(),
+         :src_conn_ID => binary()
+       },
+       :crypto => %{
+         :cert => :undefined | binary(),
+         :cert_chain => [binary()],
+         :cert_priv_key => :undefined | binary(),
+         :cipher => :undefined | {atom(), atom()},
+         :client_early_iv => binary(),
+         :client_early_key => binary(),
+         :client_handshake_iv => binary(),
+         :client_handshake_key => binary(),
+         :client_handshake_secret => binary(),
+         :client_init_iv => binary(),
+         :client_init_key => binary(),
+         :client_init_secret => binary(),
+         :client_protected_iv => binary(),
+         :client_protected_key => binary(),
+         :client_protected_secret => binary(),
+         :group => _,
+         :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+         :handshake_secret => binary(),
+         :init_offsets => {non_neg_integer(), non_neg_integer()},
+         :init_secret => binary(),
+         :other_pub_key => _,
+         :pkt_num_handshake_secret => binary(),
+         :pkt_num_init_secret => binary(),
+         :pkt_num_protected_secret => binary(),
+         :priv_key => :undefined | binary(),
+         :protected_offsets => {non_neg_integer(), non_neg_integer()},
+         :protected_secret => binary(),
+         :pub_key => :undefined | binary(),
+         :server_handshake_iv => binary(),
+         :server_handshake_key => binary(),
+         :server_handshake_secret => binary(),
+         :server_init_iv => binary(),
+         :server_init_key => binary(),
+         :server_init_secret => binary(),
+         :server_protected_iv => binary(),
+         :server_protected_key => binary(),
+         :server_protected_secret => binary(),
+         :signature_alg => :undefined | {atom(), atom(), atom()},
+         :state => atom(),
+         :tls_version => :undefined | non_neg_integer(),
+         :transcript => binary()
+       },
+       :current_data => non_neg_integer(),
+       :params => %{
+         :ack_delay_exp => non_neg_integer(),
+         :idle_timeout => non_neg_integer(),
+         :init_max_bi_streams => non_neg_integer(),
+         :init_max_data => non_neg_integer(),
+         :init_max_stream_data => non_neg_integer(),
+         :init_max_uni_streams => non_neg_integer(),
+         :max_packet_size => non_neg_integer(),
+         :migration => boolean(),
+         :preferred_address => %{
+           :address =>
+             {byte(), byte(), byte(), byte()}
+             | {char(), char(), char(), char(), char(), char(), char(), char()},
+           :conn_id => binary(),
+           :port => char(),
+           :reset_token => binary()
+         },
+         :reset_token => binary()
+       },
+       :pkt_nums => map(),
+       :priority_num => non_neg_integer(),
+       :retry_token => binary(),
+       :send_queue => :quic_staging.staging(),
+       :timer_info => map(),
+       :type => :client | :server,
+       :version => %{
+         :initial_version => binary(),
+         :negotiated_version => binary(),
+         :supported_versions => [binary()]
+       },
+       :vx_module => atom()
+     }}
 
 
-Legacy warning:
-src/quic_statem.erl:43: The call maps:get('packing_priority',Quic_Opts::['binary' | 'list' | {atom(),'balanced' | 'binary' | 'false' | 'list' | 'low' | 'none' | 'once' | 'port' | 'term' | 'true' | integer() | {{byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()},{byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()}} | {byte(),byte(),byte(),byte()} | {char(),char(),char(),char(),char(),char(),char(),char()} | #{'default_stream_opts'=>#{'active'=>'false' | 'once' | 'true' | integer(), 'mode'=>'binary' | 'list', 'pack'=>'balanced' | 'low' | 'none', 'stream_data_limit'=>non_neg_integer(), 'stream_timeout'=>'infinity' | non_neg_integer(), 'type'=>'bidi' | 'uni'}, 'init_stream_id_bidi'=>non_neg_integer(), 'init_stream_id_uni'=>non_neg_integer(), 'max_stream_id_bidi'=>non_neg_integer(), 'max_stream_id_uni'=>non_neg_integer(), 'stream_id_incr_bidi'=>non_neg_integer(), 'stream_id_incr_uni'=>non_neg_integer()}} | {'raw',non_neg_integer(),non_neg_integer(),binary()}],'none') will never return since the success typing is (any(),map(),any()) -> any() and the contract is (Key,Map,Default) -> Value | Default when Key :: term(), Map :: map(), Value :: term(), Default :: term()
+Expected:
+@spec handle_event(...) :: 
+  :keep_state_and_data
+  | :repeat_state_and_data
+  | :stop
+  | {:keep_state, _}
+  | {:keep_state_and_data,
+     :hibernate
+     | :infinity
+     | :postpone
+     | [
+         :hibernate
+         | :infinity
+         | :postpone
+         | integer()
+         | {:hibernate, boolean()}
+         | {:postpone, boolean()}
+         | {:next_event | :reply | :state_timeout | :timeout | {:timeout, _},
+            :cast
+            | :infinity
+            | :info
+            | :internal
+            | :state_timeout
+            | :timeout
+            | integer()
+            | {:call | :timeout | pid(), _}, _}
+         | {:state_timeout | :timeout | {:timeout, _}, :infinity | integer(), _,
+            [{:abs, boolean()}] | {:abs, boolean()}}
+       ]
+     | integer()
+     | {:hibernate, boolean()}
+     | {:postpone, boolean()}
+     | {:next_event | :reply | :state_timeout | :timeout | {:timeout, _},
+        :cast
+        | :infinity
+        | :info
+        | :internal
+        | :state_timeout
+        | :timeout
+        | integer()
+        | {:call | :timeout | pid(), _}, _}
+     | {:state_timeout | :timeout | {:timeout, _}, :infinity | integer(), _,
+        [{:abs, boolean()}] | {:abs, boolean()}}}
+  | {:repeat_state, _}
+  | {:repeat_state_and_data,
+     :hibernate
+     | :infinity
+     | :postpone
+     | [
+         :hibernate
+         | :infinity
+         | :postpone
+         | integer()
+         | {:hibernate, boolean()}
+         | {:postpone, boolean()}
+         | {:next_event | :reply | :state_timeout | :timeout | {:timeout, _},
+            :cast
+            | :infinity
+            | :info
+            | :internal
+            | :state_timeout
+            | :timeout
+            | integer()
+            | {:call | :timeout | pid(), _}, _}
+         | {:state_timeout | :timeout | {:timeout, _}, :infinity | integer(), _,
+            [{:abs, boolean()}] | {:abs, boolean()}}
+       ]
+     | integer()
+     | {:hibernate, boolean()}
+     | {:postpone, boolean()}
+     | {:next_event | :reply | :state_timeout | :timeout | {:timeout, _},
+        :cast
+        | :infinity
+        | :info
+        | :internal
+        | :state_timeout
+        | :timeout
+        | integer()
+        | {:call | :timeout | pid(), _}, _}
+     | {:state_timeout | :timeout | {:timeout, _}, :infinity | integer(), _,
+        [{:abs, boolean()}] | {:abs, boolean()}}}
+  | {:stop, _}
+  | {:keep_state, _,
+     :hibernate
+     | :infinity
+     | :postpone
+     | [
+         :hibernate
+         | :infinity
+         | :postpone
+         | integer()
+         | {:hibernate, boolean()}
+         | {:postpone, boolean()}
+         | {:next_event | :reply | :state_timeout | :timeout | {:timeout, _},
+            :cast
+            | :infinity
+            | :info
+            | :internal
+            | :state_timeout
+            | :timeout
+            | integer()
+            | {:call | :timeout | pid(), _}, _}
+         | {:state_timeout | :timeout | {:timeout, _}, :infinity | integer(), _,
+            [{:abs, boolean()}] | {:abs, boolean()}}
+       ]
+     | integer()
+     | {:hibernate, boolean()}
+     | {:postpone, boolean()}
+     | {:next_event | :reply | :state_timeout | :timeout | {:timeout, _},
+        :cast
+        | :infinity
+        | :info
+        | :internal
+        | :state_timeout
+        | :timeout
+        | integer()
+        | {:call | :timeout | pid(), _}, _}
+     | {:state_timeout | :timeout | {:timeout, _}, :infinity | integer(), _,
+        [{:abs, boolean()}] | {:abs, boolean()}}}
+  | {:next_state, _, _}
+  | {:repeat_state, _,
+     :hibernate
+     | :infinity
+     | :postpone
+     | [
+         :hibernate
+         | :infinity
+         | :postpone
+         | integer()
+         | {:hibernate, boolean()}
+         | {:postpone, boolean()}
+         | {:next_event | :reply | :state_timeout | :timeout | {:timeout, _},
+            :cast
+            | :infinity
+            | :info
+            | :internal
+            | :state_timeout
+            | :timeout
+            | integer()
+            | {:call | :timeout | pid(), _}, _}
+         | {:state_timeout | :timeout | {:timeout, _}, :infinity | integer(), _,
+            [{:abs, boolean()}] | {:abs, boolean()}}
+       ]
+     | integer()
+     | {:hibernate, boolean()}
+     | {:postpone, boolean()}
+     | {:next_event | :reply | :state_timeout | :timeout | {:timeout, _},
+        :cast
+        | :infinity
+        | :info
+        | :internal
+        | :state_timeout
+        | :timeout
+        | integer()
+        | {:call | :timeout | pid(), _}, _}
+     | {:state_timeout | :timeout | {:timeout, _}, :infinity | integer(), _,
+        [{:abs, boolean()}] | {:abs, boolean()}}}
+  | {:stop, _, _}
+  | {:stop_and_reply, _, [{:reply, {pid(), _}, _}] | {:reply, {pid(), _}, _}}
+  | {:next_state, _, _,
+     :hibernate
+     | :infinity
+     | :postpone
+     | [
+         :hibernate
+         | :infinity
+         | :postpone
+         | integer()
+         | {:hibernate, boolean()}
+         | {:postpone, boolean()}
+         | {:next_event | :reply | :state_timeout | :timeout | {:timeout, _},
+            :cast
+            | :infinity
+            | :info
+            | :internal
+            | :state_timeout
+            | :timeout
+            | integer()
+            | {:call | :timeout | pid(), _}, _}
+         | {:state_timeout | :timeout | {:timeout, _}, :infinity | integer(), _,
+            [{:abs, boolean()}] | {:abs, boolean()}}
+       ]
+     | integer()
+     | {:hibernate, boolean()}
+     | {:postpone, boolean()}
+     | {:next_event | :reply | :state_timeout | :timeout | {:timeout, _},
+        :cast
+        | :infinity
+        | :info
+        | :internal
+        | :state_timeout
+        | :timeout
+        | integer()
+        | {:call | :timeout | pid(), _}, _}
+     | {:state_timeout | :timeout | {:timeout, _}, :infinity | integer(), _,
+        [{:abs, boolean()}] | {:abs, boolean()}}}
+  | {:stop_and_reply, _, [{:reply, {pid(), _}, _}] | {:reply, {pid(), _}, _}, _}
+________________________________________________________________________________
+src/quic_statem.erl:61:overlapping_contract
+Overloaded contract for :quic_statem.handle_event/4 has
+overlapping domains; such contracts are currently unsupported and
+are simply ignored.
+________________________________________________________________________________
+src/quic_statem.erl:369:pattern_match
+The pattern
+{:error, :Reason}
+
+can never match the type
+
+  {:ok,
+   %{
+     :cc_info => map(),
+     :conn => %{
+       :address =>
+         {byte(), byte(), byte(), byte()}
+         | {char(), char(), char(), char(), char(), char(), char(), char()},
+       :dest_conn_ID => binary(),
+       :owner => pid(),
+       :port => char(),
+       :socket => port(),
+       :src_conn_ID => binary()
+     },
+     :crypto => %{
+       :cert => :undefined | binary(),
+       :cert_chain => [binary()],
+       :cert_priv_key => :undefined | binary(),
+       :cipher => :undefined | {atom(), atom()},
+       :client_early_iv => binary(),
+       :client_early_key => binary(),
+       :client_handshake_iv => binary(),
+       :client_handshake_key => binary(),
+       :client_handshake_secret => binary(),
+       :client_init_iv => binary(),
+       :client_init_key => binary(),
+       :client_init_secret => binary(),
+       :client_protected_iv => binary(),
+       :client_protected_key => binary(),
+       :client_protected_secret => binary(),
+       :group => _,
+       :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+       :handshake_secret => binary(),
+       :init_offsets => {non_neg_integer(), non_neg_integer()},
+       :init_secret => binary(),
+       :other_pub_key => _,
+       :pkt_num_handshake_secret => binary(),
+       :pkt_num_init_secret => binary(),
+       :pkt_num_protected_secret => binary(),
+       :priv_key => :undefined | binary(),
+       :protected_offsets => {non_neg_integer(), non_neg_integer()},
+       :protected_secret => binary(),
+       :pub_key => :undefined | binary(),
+       :server_handshake_iv => binary(),
+       :server_handshake_key => binary(),
+       :server_handshake_secret => binary(),
+       :server_init_iv => binary(),
+       :server_init_key => binary(),
+       :server_init_secret => binary(),
+       :server_protected_iv => binary(),
+       :server_protected_key => binary(),
+       :server_protected_secret => binary(),
+       :signature_alg => :undefined | {atom(), atom(), atom()},
+       :state => atom(),
+       :tls_version => :undefined | non_neg_integer(),
+       :transcript => binary()
+     },
+     :current_data => non_neg_integer(),
+     :params => %{
+       :ack_delay_exp => non_neg_integer(),
+       :idle_timeout => non_neg_integer(),
+       :init_max_bi_streams => non_neg_integer(),
+       :init_max_data => non_neg_integer(),
+       :init_max_stream_data => non_neg_integer(),
+       :init_max_uni_streams => non_neg_integer(),
+       :max_packet_size => non_neg_integer(),
+       :migration => boolean(),
+       :preferred_address => %{
+         :address =>
+           {byte(), byte(), byte(), byte()}
+           | {char(), char(), char(), char(), char(), char(), char(), char()},
+         :conn_id => binary(),
+         :port => char(),
+         :reset_token => binary()
+       },
+       :reset_token => binary()
+     },
+     :pkt_nums => map(),
+     :priority_num => non_neg_integer(),
+     :retry_token => binary(),
+     :send_queue => :quic_staging.staging(),
+     :timer_info => map(),
+     :type => :client | :server,
+     :version => %{
+       :initial_version => binary(),
+       :negotiated_version => binary(),
+       :supported_versions => [binary()]
+     },
+     :vx_module => atom()
+   }}
+________________________________________________________________________________
+src/quic_statem.erl:379:pattern_match
+The pattern
+{:error, :Reason}
+
+can never match the type
+
+  {:avoidance,
+   %{
+     :cc_info => map(),
+     :timer_info => map(),
+     :conn => %{
+       :address =>
+         {byte(), byte(), byte(), byte()}
+         | {char(), char(), char(), char(), char(), char(), char(), char()},
+       :dest_conn_ID => binary(),
+       :owner => pid(),
+       :port => char(),
+       :socket => port(),
+       :src_conn_ID => binary()
+     },
+     :crypto => %{
+       :cert => :undefined | binary(),
+       :cert_chain => [binary()],
+       :cert_priv_key => :undefined | binary(),
+       :cipher => :undefined | {atom(), atom()},
+       :client_early_iv => binary(),
+       :client_early_key => binary(),
+       :client_handshake_iv => binary(),
+       :client_handshake_key => binary(),
+       :client_handshake_secret => binary(),
+       :client_init_iv => binary(),
+       :client_init_key => binary(),
+       :client_init_secret => binary(),
+       :client_protected_iv => binary(),
+       :client_protected_key => binary(),
+       :client_protected_secret => binary(),
+       :group => _,
+       :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+       :handshake_secret => binary(),
+       :init_offsets => {non_neg_integer(), non_neg_integer()},
+       :init_secret => binary(),
+       :other_pub_key => _,
+       :pkt_num_handshake_secret => binary(),
+       :pkt_num_init_secret => binary(),
+       :pkt_num_protected_secret => binary(),
+       :priv_key => :undefined | binary(),
+       :protected_offsets => {non_neg_integer(), non_neg_integer()},
+       :protected_secret => binary(),
+       :pub_key => :undefined | binary(),
+       :server_handshake_iv => binary(),
+       :server_handshake_key => binary(),
+       :server_handshake_secret => binary(),
+       :server_init_iv => binary(),
+       :server_init_key => binary(),
+       :server_init_secret => binary(),
+       :server_protected_iv => binary(),
+       :server_protected_key => binary(),
+       :server_protected_secret => binary(),
+       :signature_alg => :undefined | {atom(), atom(), atom()},
+       :state => atom(),
+       :tls_version => :undefined | non_neg_integer(),
+       :transcript => binary()
+     },
+     :current_data => non_neg_integer(),
+     :params => %{
+       :ack_delay_exp => non_neg_integer(),
+       :idle_timeout => non_neg_integer(),
+       :init_max_bi_streams => non_neg_integer(),
+       :init_max_data => non_neg_integer(),
+       :init_max_stream_data => non_neg_integer(),
+       :init_max_uni_streams => non_neg_integer(),
+       :max_packet_size => non_neg_integer(),
+       :migration => boolean(),
+       :preferred_address => %{
+         :address =>
+           {byte(), byte(), byte(), byte()}
+           | {char(), char(), char(), char(), char(), char(), char(), char()},
+         :conn_id => binary(),
+         :port => char(),
+         :reset_token => binary()
+       },
+       :reset_token => binary()
+     },
+     :pkt_nums => map(),
+     :priority_num => non_neg_integer(),
+     :retry_token => binary(),
+     :send_queue => :quic_staging.staging(),
+     :type => :client | :server,
+     :version => %{
+       :initial_version => binary(),
+       :negotiated_version => binary(),
+       :supported_versions => [binary()]
+     },
+     :vx_module => atom()
+   }}
+  | {:slow_start,
+     %{
+       :cc_info => map(),
+       :timer_info => map(),
+       :conn => %{
+         :address =>
+           {byte(), byte(), byte(), byte()}
+           | {char(), char(), char(), char(), char(), char(), char(), char()},
+         :dest_conn_ID => binary(),
+         :owner => pid(),
+         :port => char(),
+         :socket => port(),
+         :src_conn_ID => binary()
+       },
+       :crypto => %{
+         :cert => :undefined | binary(),
+         :cert_chain => [binary()],
+         :cert_priv_key => :undefined | binary(),
+         :cipher => :undefined | {atom(), atom()},
+         :client_early_iv => binary(),
+         :client_early_key => binary(),
+         :client_handshake_iv => binary(),
+         :client_handshake_key => binary(),
+         :client_handshake_secret => binary(),
+         :client_init_iv => binary(),
+         :client_init_key => binary(),
+         :client_init_secret => binary(),
+         :client_protected_iv => binary(),
+         :client_protected_key => binary(),
+         :client_protected_secret => binary(),
+         :group => _,
+         :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+         :handshake_secret => binary(),
+         :init_offsets => {non_neg_integer(), non_neg_integer()},
+         :init_secret => binary(),
+         :other_pub_key => _,
+         :pkt_num_handshake_secret => binary(),
+         :pkt_num_init_secret => binary(),
+         :pkt_num_protected_secret => binary(),
+         :priv_key => :undefined | binary(),
+         :protected_offsets => {non_neg_integer(), non_neg_integer()},
+         :protected_secret => binary(),
+         :pub_key => :undefined | binary(),
+         :server_handshake_iv => binary(),
+         :server_handshake_key => binary(),
+         :server_handshake_secret => binary(),
+         :server_init_iv => binary(),
+         :server_init_key => binary(),
+         :server_init_secret => binary(),
+         :server_protected_iv => binary(),
+         :server_protected_key => binary(),
+         :server_protected_secret => binary(),
+         :signature_alg => :undefined | {atom(), atom(), atom()},
+         :state => atom(),
+         :tls_version => :undefined | non_neg_integer(),
+         :transcript => binary()
+       },
+       :current_data => non_neg_integer(),
+       :params => %{
+         :ack_delay_exp => non_neg_integer(),
+         :idle_timeout => non_neg_integer(),
+         :init_max_bi_streams => non_neg_integer(),
+         :init_max_data => non_neg_integer(),
+         :init_max_stream_data => non_neg_integer(),
+         :init_max_uni_streams => non_neg_integer(),
+         :max_packet_size => non_neg_integer(),
+         :migration => boolean(),
+         :preferred_address => %{
+           :address =>
+             {byte(), byte(), byte(), byte()}
+             | {char(), char(), char(), char(), char(), char(), char(), char()},
+           :conn_id => binary(),
+           :port => char(),
+           :reset_token => binary()
+         },
+         :reset_token => binary()
+       },
+       :pkt_nums => map(),
+       :priority_num => non_neg_integer(),
+       :retry_token => binary(),
+       :send_queue => :quic_staging.staging(),
+       :type => :client | :server,
+       :version => %{
+         :initial_version => binary(),
+         :negotiated_version => binary(),
+         :supported_versions => [binary()]
+       },
+       :vx_module => atom()
+     }}
+  | {:recovery,
+     %{
+       :cc_info => %{:ecn_ce_counter => _, _ => _},
+       :timer_info => map(),
+       :conn => %{
+         :address =>
+           {byte(), byte(), byte(), byte()}
+           | {char(), char(), char(), char(), char(), char(), char(), char()},
+         :dest_conn_ID => binary(),
+         :owner => pid(),
+         :port => char(),
+         :socket => port(),
+         :src_conn_ID => binary()
+       },
+       :crypto => %{
+         :cert => :undefined | binary(),
+         :cert_chain => [binary()],
+         :cert_priv_key => :undefined | binary(),
+         :cipher => :undefined | {atom(), atom()},
+         :client_early_iv => binary(),
+         :client_early_key => binary(),
+         :client_handshake_iv => binary(),
+         :client_handshake_key => binary(),
+         :client_handshake_secret => binary(),
+         :client_init_iv => binary(),
+         :client_init_key => binary(),
+         :client_init_secret => binary(),
+         :client_protected_iv => binary(),
+         :client_protected_key => binary(),
+         :client_protected_secret => binary(),
+         :group => _,
+         :handshake_offsets => {non_neg_integer(), non_neg_integer()},
+         :handshake_secret => binary(),
+         :init_offsets => {non_neg_integer(), non_neg_integer()},
+         :init_secret => binary(),
+         :other_pub_key => _,
+         :pkt_num_handshake_secret => binary(),
+         :pkt_num_init_secret => binary(),
+         :pkt_num_protected_secret => binary(),
+         :priv_key => :undefined | binary(),
+         :protected_offsets => {non_neg_integer(), non_neg_integer()},
+         :protected_secret => binary(),
+         :pub_key => :undefined | binary(),
+         :server_handshake_iv => binary(),
+         :server_handshake_key => binary(),
+         :server_handshake_secret => binary(),
+         :server_init_iv => binary(),
+         :server_init_key => binary(),
+         :server_init_secret => binary(),
+         :server_protected_iv => binary(),
+         :server_protected_key => binary(),
+         :server_protected_secret => binary(),
+         :signature_alg => :undefined | {atom(), atom(), atom()},
+         :state => atom(),
+         :tls_version => :undefined | non_neg_integer(),
+         :transcript => binary()
+       },
+       :current_data => non_neg_integer(),
+       :params => %{
+         :ack_delay_exp => non_neg_integer(),
+         :idle_timeout => non_neg_integer(),
+         :init_max_bi_streams => non_neg_integer(),
+         :init_max_data => non_neg_integer(),
+         :init_max_stream_data => non_neg_integer(),
+         :init_max_uni_streams => non_neg_integer(),
+         :max_packet_size => non_neg_integer(),
+         :migration => boolean(),
+         :preferred_address => %{
+           :address =>
+             {byte(), byte(), byte(), byte()}
+             | {char(), char(), char(), char(), char(), char(), char(), char()},
+           :conn_id => binary(),
+           :port => char(),
+           :reset_token => binary()
+         },
+         :reset_token => binary()
+       },
+       :pkt_nums => map(),
+       :priority_num => non_neg_integer(),
+       :retry_token => binary(),
+       :send_queue => :quic_staging.staging(),
+       :type => :client | :server,
+       :version => %{
+         :initial_version => binary(),
+         :negotiated_version => binary(),
+         :supported_versions => [binary()]
+       },
+       :vx_module => atom()
+     }, {:ecn_event, non_neg_integer()}}
 ________________________________________________________________________________
 [33mdone (warnings were emitted)[0m

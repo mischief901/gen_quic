@@ -32,6 +32,7 @@ packet_num_send_length(_) ->
   %% Otherwise 4 bytes needed.
   4.
 
+-spec to_var_pkt_num(non_neg_integer()) -> binary().
 to_var_pkt_num(Pkt_Num) when Pkt_Num < 128 ->
   <<0:1, Pkt_Num:7>>;
 to_var_pkt_num(Pkt_Num) when Pkt_Num < 8192 ->
@@ -54,6 +55,8 @@ packet_num_untruncate({_, Largest_Recv, _}, Truncated, Bits) ->
   Candidate = ((Largest_Recv + 1) band (bnot Mask)) bor Truncated,
   check_candidate(Largest_Recv + 1, Candidate, Pkt_H_Win, Pkt_Window).
 
+
+-spec check_candidate(number(), number(), number(), number()) -> number().
 check_candidate(Expected, Candidate, Pkt_H_Win, Pkt_Win) when 
     Candidate =< Expected - Pkt_H_Win ->
   Candidate + Pkt_Win;
@@ -118,6 +121,7 @@ from_var_length(Flag) ->
 %% Crashes if the size of the binary rem Split is not 0.
 %% May be faster if the binary is just split into a list of values
 %% and then folded over using lists:foldl.
+-spec binary_foldl(function(), term(), binary(), pos_integer()) -> term().
 binary_foldl(_Fun, Acc, <<>>, _) ->
   Acc;
 

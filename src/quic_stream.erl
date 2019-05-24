@@ -59,10 +59,10 @@ add_peer_stream(Pid, Stream_ID, Init_Frame) ->
     Data :: binary() | list(),
     Result :: ok.
 
-send({Socket, Stream_ID} = Stream, Data) when is_list(Data) ->
+send({_Socket, _Stream_ID} = Stream, Data) when is_list(Data) ->
   send(Stream, list_to_binary(Data));
 
-send({Socket, Stream_ID} = Stream, Data) ->
+send({_Socket, Stream_ID} = Stream, Data) ->
   gen_server:cast(via(Stream), {send, Stream_ID, Data}).
 
 
@@ -72,12 +72,12 @@ send({Socket, Stream_ID} = Stream, Data) ->
     Result :: {ok, Data} | {error, timeout},
     Data :: binary() | list().
 
-recv({_Socket, Stream_ID} = Stream, Timeout) ->
+recv({_Socket, _Stream_ID} = Stream, Timeout) ->
   recv(Stream, Timeout, 0).
 
-recv(Stream, Timeout, Current) when Current >= Timeout ->
+recv(_Stream, Timeout, Current) when Current >= Timeout ->
   {error, timeout};
-recv({Socket, Stream_ID} = Stream, Timeout, Current) ->
+recv({_Socket, Stream_ID} = Stream, Timeout, Current) ->
   case gen_server:call(via(Stream), {recv, Stream_ID}, 100) of
     {error, timeout} ->
       recv(Stream, Timeout, Current + 100);

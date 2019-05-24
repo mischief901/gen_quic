@@ -251,6 +251,9 @@ getopts(Socket, Options) ->
   end.
 
 
+-spec via(Socket) -> {via, quic_registry, Socket} when 
+    Socket :: gen_quic:socket() |
+              gen_quic:stream().
 via(Socket) ->
   {via, quic_registry, Socket}.
 
@@ -322,6 +325,13 @@ send_and_form_packet(Pkt_Type, Data) ->
 %%   io:format("Forming Packet: ~p~n", [Pkt_Type]),
 %%   form_ack_frame(Pkt_Type, Data).
 
+-spec form_ack_frame(Pkt_Type, Data) -> Result when
+    Pkt_Type :: short | early_data | client_hello | server_hello |
+                encrypted_exts | certificate | cert_verify |
+                finished,
+    Data :: quic_data(),
+    Result :: {ok, Data}.
+
 form_ack_frame(Pkt_Type, #{vx_module := Module} = Data0) when 
     Pkt_Type == short;
     Pkt_Type == early_data ->
@@ -344,6 +354,12 @@ form_ack_frame(Pkt_Type, #{vx_module := Module} = Data0) ->
   {ok, Ack_Frame} = quic_packet:form_frame(Module, Ack_Info),
   form_crypto_frame(Pkt_Type, Data1, Ack_Frame).
 
+
+-spec form_frames(Pkt_Type, Data, Frame) -> {ok, Data} when
+    Pkt_Type :: early_data | short,
+    Data :: quic_data(),
+    Frame :: quic_frame().
+
 form_frames(Pkt_Type, Data0, #{binary := Ack_Bin} = Ack_Frame) ->
   {ok, Size} = quic_cc:available_packet_size(Data0),
   %% Can potentially send more frames.
@@ -362,6 +378,13 @@ form_frames(Pkt_Type, Data0, #{binary := Ack_Bin} = Ack_Frame) ->
   end.
 
 
+-spec form_crypto_frame(Pkt_Type, Data, Frame) -> {ok, Data} when
+    Pkt_Type :: server_hello | client_hello |
+                encrypted_exts | certificate | cert_verify |
+                finished,
+    Data :: quic_data(),
+    Frame :: quic_frame().
+
 form_crypto_frame(Pkt_Type, #{vx_module := Module} = Data0, Ack_Frame) ->
   %% Create the crypto frame binary, wrap it in the crypto frame header, and add it to the
   %% crypto transcript. This could be prettier, but I want the separation of the steps.
@@ -372,6 +395,7 @@ form_crypto_frame(Pkt_Type, #{vx_module := Module} = Data0, Ack_Frame) ->
   {ok, Crypto_Frame} = quic_packet:form_frame(Module, Crypto_Data),
   io:format("Crypto Frame: ~p~n", [Crypto_Frame]),
   form_packet(Pkt_Type, Data1, [Ack_Frame, Crypto_Frame]).
+
 
 -spec form_packet(Pkt_Type, Data, Frames) -> Result when
     Pkt_Type :: early_data | short | server_hello | client_hello |
@@ -404,11 +428,27 @@ form_packet(Pkt_Type, Data0, Frames) ->
   encrypt_packet(Header_Type, Data1, Frames, Header, Payload, Pkt_Num).
 
 
+-spec encrypt_packet(Range, Data, Frames, Header, Payload, Pkt_Num) -> Result when
+    Range :: initial | early_data | handshake | short,
+    Data :: quic_data(),
+    Frames :: [quic_frame()],
+    Header :: binary(),
+    Payload :: binary(),
+    Pkt_Num :: {non_neg_integer(), binary()},
+    Result :: {ok, Data}.
+
 encrypt_packet(Crypto_Range, Data0, Frames, Header, Payload, {Pkt_Num_Int, _Bin} = Pkt_Num) ->
   {ok, Data1, Packet} = quic_crypto:encrypt_packet(Crypto_Range, Data0, 
                                                    Header, Payload, Pkt_Num),
   send_packet(Crypto_Range, Data1, Frames, Packet, Pkt_Num_Int).
 
+
+-spec send_packet(Range, Data, Frames, Packet, Pkt_Num) -> {ok, Data} when
+    Range :: initial | handshake | short | early_data,
+    Data :: quic_data(),
+    Frames :: [quic_frame()],
+    Packet :: binary(),
+    Pkt_Num :: non_neg_integer().
 
 send_packet(Crypto_Range, #{conn := #{socket := Socket,
                                       address := IP,
@@ -418,6 +458,14 @@ send_packet(Crypto_Range, #{conn := #{socket := Socket,
   prim_inet:sendto(Socket, IP, Port, Packet),
   packet_sent(Crypto_Range, Data, Frames, byte_size(Packet), Pkt_Num).
 
+
+-spec packet_sent(Range, Data, Frames, Packet_Size, Pkt_Num) -> {ok, Data} when
+    Range :: initial | handshake | protected,
+    Data :: quic_data(),
+    Frames :: [quic_frame()],
+    Packet_Size :: non_neg_integer(),
+    Pkt_Num :: non_neg_integer().
+    
 packet_sent(Range, Data, Frames, Packet_Size, Pkt_Num) ->
   %% Range is needed at this point for resending purposes.
   Pkt_Range = case Range of

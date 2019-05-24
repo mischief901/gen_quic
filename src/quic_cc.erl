@@ -231,10 +231,9 @@ handle_acks(CC_State0,
                               smooth_rtt := SRTT0,
                               var_rtt := VRTT0,
                               min_rtt := Min_RTT0
-                             } = Timer_Info0,
-              cc_info := CC_Info
+                             } = Timer_Info0
              } = Data0,
-            Crypto_Range, 
+            _Crypto,
             #{type := ack_frame,
               largest := Largest_Ack,
               acks := Acks,
@@ -289,7 +288,7 @@ has_congestion_event(CC_State, Data, Largest_Pkt_Num, none) ->
 has_congestion_event(_,
                      #{cc_info := #{ecn_ce_counter := _Total} = CC0} = Data0, 
                      Largest_Pkt_Num,
-                     {ECT0, ECT1, ECN_Total}) when _Total < ECN_Total ->
+                     {_ECT0, _ECT1, ECN_Total}) when _Total < ECN_Total ->
   %% There is ecn info in the ack frame and the ecn count is greater
   Data = Data0#{cc_info := CC0#{ecn_ce_counter => ECN_Total}},
   {recovery, Data, {ecn_event, Largest_Pkt_Num}};
@@ -389,7 +388,7 @@ handle_ack_cc(slow_start,
                              congestion_window := Window
                             } = CC_Info0
                } = Data0,
-              [{Pkt_Num, {_, Size, _}} | Rest], Total) when Window < Threshold ->
+              [{_Pkt_Num, {_, Size, _}} | Rest], Total) when Window < Threshold ->
   %% Stay in slow_start. Increase the congestion window
   Data = Data0#{cc_info := CC_Info0#{congestion_window => Window + Size}},
   handle_ack_cc(slow_start, Data, Rest, Total + Size);
@@ -398,7 +397,7 @@ handle_ack_cc(slow_start,
               #{cc_info := #{congestion_window := Window0,
                              max_datagram_size := Max} = CC_Info0
                } = Data0,
-              [{Pkt_Num, {_, Size, _}} | Rest], Total) ->
+              [{_Pkt_Num, {_, Size, _}} | Rest], Total) ->
   %% Transition to congestion avoidance.
   Window = Window0 + (Max * Size) / Window0,
   Data = Data0#{cc_info := CC_Info0#{congestion_window => Window}},
@@ -434,7 +433,7 @@ update_rtt(S, V, Latest, Delay, Min) when Latest - Min > Delay ->
   update_rtt(S, V, Latest - Delay, Delay, Min);
 update_rtt(0, _, Latest, _, Min) -> 
   {Latest, Latest / 2, Min};
-update_rtt(Smooth0, Var0, Latest, Delay, Min_RTT) ->
+update_rtt(Smooth0, Var0, Latest, _Delay, Min_RTT) ->
   Sample = abs(Smooth0 - Latest),
   Var = 3/4 * Var0 + 1/4 * Sample,
   Smooth = 7/8 * Smooth0 + 1/8 * Latest,
@@ -469,7 +468,7 @@ queue_ack(#{cc_info := #{acks_to_be_sent := Ack_Ranges} = CC0
   CC = CC0#{acks_to_be_sent := Ack_Ranges#{Range := New_Range}},
   {ok, Data0#{cc_info := CC}};
 
-queue_ack(Data, Pkt_Type, Pkt_Num) ->
+queue_ack(Data, _Pkt_Type, _Pkt_Num) ->
   io:format("Unimplemented: queue_ack.~n"),
   io:format("Data: ~p~n", [Data]),
   {ok, Data}.
@@ -502,7 +501,7 @@ get_ack(Range, #{cc_info := #{acks_to_be_sent := Ack_Map,
       {ok, Data0#{cc_info := CC}, Ack_Frame}
   end;
 
-get_ack(Type, Data) ->
+get_ack(_Type, Data) ->
   {ok, Data, #{}}.
 
 -spec packet_lost(Data, Pkt_Nums) -> Result when
@@ -520,7 +519,7 @@ packet_lost(#{timer_info := #{sent_packets := Sent0} = Timer0} = Data0,
 
   Total = maps:fold(fun(_, {_, Size, _}, Acc) -> Acc + Size end, 0, Lost),
 
-  Data1 = Data0#{timer_info := #{sent_packets => Sent}},
+  Data1 = Data0#{timer_info := Timer0#{sent_packets => Sent}},
 
   Data2 = decrease_bytes_in_flight(Data1, Total),
   {ok, Data2, maps:to_list(Lost)}.

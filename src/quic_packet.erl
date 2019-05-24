@@ -107,6 +107,28 @@ parse_header(<<0:1, Type:7/bits, Rest/binary>>, Data) ->
   %% Short header type.
   parse_short_header(Rest, Data, Type, 1).
 
+
+-spec parse_long_header(binary(), quic_data(), non_neg_integer(), binary(),
+                        non_neg_integer()) -> Result when
+    Result :: {ok, quic_data()} |
+              {ok, quic_data(), Header_Info} |
+              {error, term()},
+    Header_Info :: {initial, Reset_Token, Payload_Length, Header_Length} |
+                   {Other_Type, Payload_Length, Header_Length} |
+                   Invariant_Type,
+    Other_Type :: early_data |
+                  handshake |
+                  short,
+    Invariant_Type :: {vx_neg, Versions} |
+                      {retry, Retry_Reason},
+    Retry_Reason :: {new_dcid, conn_id()} | any(), 
+    %% TODO: Update type when retry packets are figured out.
+    Versions :: [Version],
+    Version :: version(),
+    Reset_Token :: binary(),
+    Payload_Length :: non_neg_integer(),
+    Header_Length :: non_neg_integer().
+                           
 parse_long_header(<<DCIL:4, SCIL:4, Rest/binary>>,
                   #{version := #{negotiated_version := Version}
                     } = Data,
@@ -153,9 +175,29 @@ parse_long_header(_, _, _, _, _) ->
   {error, invalid_header}.
 
 
+-spec parse_short_header(binary(), quic_data(), any(), non_neg_integer()) -> Result when
+    Result :: {ok, quic_data()} |
+              {ok, quic_data(), Header_Info} |
+              {error, term()},
+    Header_Info :: {initial, Reset_Token, Payload_Length, Header_Length} |
+                   {Other_Type, Payload_Length, Header_Length} |
+                   Invariant_Type,
+    Other_Type :: early_data |
+                  handshake |
+                  short,
+    Invariant_Type :: {vx_neg, Versions} |
+                      {retry, Retry_Reason},
+    Retry_Reason :: {new_dcid, conn_id()} | any(), 
+    %% TODO: Update type when retry packets are figured out.
+    Versions :: [Version],
+    Version :: version(),
+    Reset_Token :: binary(),
+    Payload_Length :: non_neg_integer(),
+    Header_Length :: non_neg_integer().
+
 parse_short_header(<<Header/binary>>, 
                    #{conn := #{src_conn_ID := Dest_Conn}} = Data,
-                   Type, Header_Length) ->
+                   _Type, Header_Length) ->
   %% Type flags to be implemented.
   Dest_Len = quic_utils:to_conn_length(Dest_Conn),
   
@@ -168,7 +210,28 @@ parse_short_header(<<Header/binary>>,
       {error, invalid_header}
   end.
 
-
+-spec parse_conns(binary(), quic_data(), Type, {non_neg_integer(), non_neg_integer()},
+                  non_neg_integer() | unsupported) -> Result when
+    Type :: initial | Other_Type | unsupported,
+    Result :: {ok, quic_data()} |
+              {ok, quic_data(), Header_Info} |
+              {error, term()},
+    Header_Info :: {initial, Reset_Token, Payload_Length, Header_Length} |
+                   {Other_Type, Payload_Length, Header_Length} |
+                   Invariant_Type,
+    Other_Type :: early_data |
+                  handshake |
+                  short,
+    Invariant_Type :: {vx_neg, Versions} |
+                      {retry, Retry_Reason},
+    Retry_Reason :: {new_dcid, conn_id()} | any(), 
+    %% TODO: Update type when retry packets are figured out.
+    Versions :: [Version],
+    Version :: version(),
+    Reset_Token :: binary(),
+    Payload_Length :: non_neg_integer(),
+    Header_Length :: non_neg_integer().
+                     
 parse_conns(<<Rest/binary>>, 
             #{conn := Conn} = Data0, 
             unsupported, {Dest_Len, Src_Len}, unsupported) ->
@@ -215,16 +278,49 @@ parse_conns(<<Header/binary>>,
   Token_Length = quic_utils:from_var_length(Token_Length_Flag),
   parse_token(Rest, Data, initial, Token_Length, Header_Length + Dest_Len + Src_Len).
 
+
+-spec parse_token(bitstring(), quic_data(), initial, Size, pos_integer()) -> Result when
+    Size :: 6 | 14 | 30 | 62,
+    Result :: {ok, quic_data()} |
+              {ok, quic_data(), Header_Info} |
+              {error, term()},
+    Header_Info :: {initial, Reset_Token, Payload_Length, Header_Length},
+    Reset_Token :: binary(),
+    Payload_Length :: non_neg_integer(),
+    Header_Length :: non_neg_integer().
+
 parse_token(<<Header/bits>>, Data, initial, Token_Length_Len, Header_Length) ->
   <<Token_Len:Token_Length_Len, Rest/bits>> = Header,
   Length_Bytes = (Token_Length_Len + 2) div 8,
   parse_token_(Rest, Data, initial, Token_Len, Header_Length + Length_Bytes).
+
+
+-spec parse_token_(bitstring(), quic_data(), initial, non_neg_integer(), 
+                  non_neg_integer()) -> Result when
+    Result :: {ok, quic_data()} |
+              {ok, quic_data(), Header_Info} |
+              {error, term()},
+    Header_Info :: {initial, Reset_Token, Payload_Length, Header_Length},
+    Reset_Token :: binary(),
+    Payload_Length :: pos_integer(),
+    Header_Length :: pos_integer().
 
 parse_token_(<<Header/bits>>, Data, initial, Token_Len, Header_Length) ->
   
   <<Token:Token_Len/binary, Length_Flag:2, Rest/bits>> = Header,
   Length_Length = quic_utils:from_var_length(Length_Flag),
   parse_length(Rest, Data, {initial, Token}, Length_Length, Header_Length + Token_Len).
+
+
+-spec parse_length(bitstring(), quic_data(), Type, non_neg_integer(), 
+                   non_neg_integer()) -> Result when
+    Result :: {ok, quic_data(), Header_Info},
+    Header_Info :: {initial, binary(), Length, Header_Length} |
+                   {Other_Type, Length, Header_Length},
+    Type :: {initial, binary()} | Other_Type,
+    Other_Type :: handshake | short | early_data,
+    Length :: non_neg_integer(),
+    Header_Length :: non_neg_integer().
 
 parse_length(<<Header/bits>>, Data, Type, Length_Length, Header_Length) ->
   <<Length:Length_Length, _Rest/binary>> = Header,

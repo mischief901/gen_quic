@@ -193,7 +193,7 @@ parse_opts([{Other, _Value} = Option | Rest], Opts, Udp_Opts, Errors) ->
       parse_opts(Rest, Opts, Udp_Opts, [Error | Errors])
   end.
 
-
+-spec udp_options() -> [atom()].
 %% This list is copied from the inet.erl module in the standard library.  
 udp_options() ->
   [tos, tclass, priority, reuseaddr, sndbuf, recbuf, header, active, buffer, mode,
@@ -202,6 +202,7 @@ udp_options() ->
    add_membership, drop_membership, read_packets,raw,
    high_msgq_watermark, low_msgq_watermark, bind_to_device].
 
+-spec quic_options() -> [atom()].
 quic_options() ->
   [supported_versions, version, max_data, max_stream_count_bidi, max_stream_count_uni,
    idle_timeout, preferred_address, max_packet_size, token_params, ack_delay_exp,
@@ -210,24 +211,28 @@ quic_options() ->
    max_peer_stream_count_uni, max_stream_count_uni, max_stream_count_bidi,
    max_peer_stream_data_bidi, max_peer_stream_data_uni].
 
+-spec is_opt(list(), atom()) -> boolean().
 %% Returns true if the given option is defined, otherwise returns false.
 %% Just a wrapper for lists:keymember.
 is_opt(Opts, Field) ->
   lists:keymember(Field, 1, Opts).
 
-
+-spec get_opt(list(), atom()) -> any().
 get_opt(Opts, Type) ->
   proplists:lookup(Type, Opts).
 
+-spec quic_module() -> inet_quic.
 quic_module() ->
   inet_quic.
 
+-spec quic_module(list()) -> any().
 quic_module(Opts) ->
   %% Calling inet's mod function should work, but it isn't exported.
   mod(Opts, quic_module, undefined, #{inet => inet_quic,
                                       inet6 => inet6_quic,
                                       local => inet_quic}).
 
+-spec quic_module(list(), inet:ip_address()) -> any().
 quic_module(Opts, Address) ->
   mod(Opts, quic_module, Address, #{inet => inet_quic,
                                     inet6 => inet6_quic,

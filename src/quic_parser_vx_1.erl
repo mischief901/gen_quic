@@ -171,6 +171,10 @@ stream_length(1) -> [parse_var_length, parse_message, parse_frame].
 %% optimizations can be utilized. Calling Fun(Packet, ...) is too dynamic for the
 %% compiler to allow the optimizations.
 
+-spec parse_next(bitstring(), [term()], [atom()]) -> Result when
+    Result :: {ok, [quic_frame()], [quic_frame()], [quic_frame()]} |
+              {error, term()}.
+
 parse_next(<<Packet/bits>>, Acc, [Next_Fun | Funs]) ->
   case Next_Fun of
     add_end_ecn ->
@@ -216,6 +220,10 @@ parse_next(<<>>, __Acc, _Funs) ->
   {error, protocol_violation}.
 
 
+-spec validate_packet(binary(), [term()], list()) -> Result when
+    Result :: {ok, [quic_frame()], [quic_frame()], [quic_frame()]} |
+              {error, term()}.
+
 %% Called when the stream uses the remainder of the packet
 %% If any funs are remaining, a protocol violation error is thrown.
 %% TODO: Needs different name.
@@ -228,9 +236,16 @@ validate_packet(_Other, _Stack, _Funs) ->
 %% Crawls through the Stack and places items into the correct records.
 %% Pushes onto Acc (putting the payload back in order)
 %% Returns when stack is empty.
-%% TODO: Add Crypto frame and crypto acc.
+
+-spec validate_packet([term()]) -> Result when
+    Result :: {ok, [quic_frame()], [quic_frame()], [quic_frame()]}.
+
 validate_packet(Stack) ->
   validate_packet(Stack, [], [], []).
+
+-spec validate_packet([term()], [quic_frame()], [quic_frame()], [quic_frame()]) -> 
+                         Result when
+    Result :: {ok, [quic_frame()], [quic_frame()], [quic_frame()]}.
 
 validate_packet([], Frames, Ack_Frames, TLS_Info) ->
   {ok, Frames, Ack_Frames, TLS_Info};
@@ -463,7 +478,7 @@ validate_packet([end_ecn, ECN_CE, ECT1, ECT2 | Rest], Frames, Ack_Frames, TLS_In
 
 %% Pops all ack ranges off the stack and into a new accumulator to allow
 %% in order processessing of the ack ranges.
-read_acks([Ack_Block, Block_Count, Delay, Largest_Ack, ack_frame | Stack], 
+read_acks([Ack_Block, _Block_Count, Delay, Largest_Ack, ack_frame | Stack], 
           Frames, Ack_Frames, TLS_Info, Acc) ->
   
   Ack_Frame = #{
@@ -612,7 +627,7 @@ parse_app_error(<<?STOPPING:16, Rest/binary>>, Stack, Funs) ->
 parse_app_error(<<_App_Error:16, Rest/binary>>, Stack, Funs) ->
   parse_next(Rest, [app_error | Stack], Funs);
 
-parse_app_error(Other, Stack, Funs) ->
+parse_app_error(_Other, _Stack, _Funs) ->
   {error, badarg}.
 
 
@@ -648,7 +663,7 @@ conn_error(Frame_Error) when
     Frame_Error >= 100, Frame_Error =< 123 ->
   {error, frame_error};
 %% TODO: frame_error(Frame_Error)
-conn_error(Other) ->
+conn_error(_Other) ->
   {error, badarg}.
 
 
@@ -684,7 +699,7 @@ parse_offset(<<Integer:30, Rest/bits>>, Stack, Funs, 2) ->
 parse_offset(<<Integer:62, Rest/bits>>, Stack, Funs, 3) ->
   parse_next(Rest, [Integer | Stack], Funs);
 
-parse_offset(<<_Error/bits>>, Stack, _Funs, Offset) ->
+parse_offset(<<_Error/bits>>, _Stack, _Funs, _Offset) ->
   io:format("Error, bad offset.~n"),
   {error, badarg}.
 
@@ -723,7 +738,7 @@ parse_offset_message(<<Integer:30, Rest/bits>>, Stack, Funs, 2) ->
 parse_offset_message(<<Integer:62, Rest/bits>>, Stack, Funs, 3) ->
   parse_message(Rest, Stack, Funs, Integer);
 
-parse_offset_message(<<_Error/bits>>, Stack, _Funs, Offset) ->
+parse_offset_message(<<_Error/bits>>, _Stack, _Funs, _Offset) ->
   io:format("Error, bad message.~n"),
   {error, badarg}.
 
