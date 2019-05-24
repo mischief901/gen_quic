@@ -256,7 +256,7 @@ via(Socket) ->
 
 
 %% This function should behave the exact same across both quic_server and quic_client.
--spec handle_frame(Frame, Data) -> Data when
+-spec handle_frame(Frame, Data) -> {ok, Data} when
     Data  :: quic_data(),
     Frame :: quic_frame().
 
@@ -267,7 +267,7 @@ handle_frame(#{type := stream_data,
               } = Data) ->
   %% Cast the Stream Frame to the Stream gen_server denoted by {Socket, Stream_ID}.
   gen_server:cast(via({Socket, Stream_ID}), {recv, Frame}),
-  Data;
+  {ok, Data};
 
 handle_frame(#{type := stream_open,
                stream_id := Stream_ID
@@ -277,10 +277,10 @@ handle_frame(#{type := stream_open,
                         }
               } = Data) ->
   ok = stream_balancer:open_stream({Socket, Stream_ID}, Owner, Frame),
-  Data;
+  {ok, Data};
 
 handle_frame(#{} = _Frame, #{} = Data) ->
-  Data.
+  {ok, Data}.
 
 
 -spec send_and_form_packet(Pkt_Type, Data) -> {ok, Data} when

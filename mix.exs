@@ -8,7 +8,7 @@ defmodule GenQuic.MixProject do
       elixir: "~> 1.6",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      dialyzer: [plt_add_apps: [:public_key, :ets]]
+      dialyzer: [plt_add_apps: [:public_key]]
     ]
   end
 

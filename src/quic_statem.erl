@@ -57,10 +57,189 @@ init([#{type := Type} = Data0, Quic_Opts]) ->
   end.
 
 
+%% Long list of types: I found I needed this.
+-spec handle_event({call, pid()}, {connect, Address, Port, timeout()}, 
+                   {initial, client}, Data) -> Result when
+    %% Connect (call)
+    Address :: inet:ip_address(),
+    Port :: inet:port_number(),
+    Data :: quic_data(),
+    Result :: {keep_state, Data, any()};
+
+                  (cast, connect, {initial, client}, Data) -> Result when
+    %% Connect (cast)
+    Data :: quic_data(),
+    Result :: {keep_state, Data};
+
+                  ({call, pid()}, {accept, Socket, timeout()},
+                   {initial, server}, Data) -> Result when
+    %% Accept (call)
+    Socket :: gen_quic:socket(),
+    Data :: quic_data(),
+    Result :: {keep_state, Data, any()};
+                  
+                  (cast, {accept, LSocket}, {initial, server}, Data) -> Result when
+    %% Accept (cast)
+    Data :: quic_data(),
+    LSocket :: gen_quic:socket(),
+    Result :: keep_state_and_data |
+              {keep_state, Data};
+                  
+                  (cast, {accept, LSocket}, {any(), server}, Data) -> Result when
+    %% Accept (flush)
+    LSocket :: gen_quic:socket(),
+    Data :: quic_data(),
+    Result :: keep_state_and_data;
+                  
+                  (internal, continue_handshake, States, Data) -> Results when
+    %% Continue Handshakes (internal)
+    Endpoints :: client | server,
+    States :: {initial, Endpoints} |
+              {handshake, Endpoints},
+    Data :: quic_data(),
+    Results :: {next_state, {handshake, Endpoints}, Data} |
+               {next_state, {connected, Endpoints}, Data};
+                  
+                  (cast, {send_handshake, Pkt_Type}, State, Data) -> Result when
+    %% Send Handshake (cast)
+    Pkt_Type :: client_hello | server_hello | encrypted_exts | certificate | 
+                cert_verify | finished,
+    State :: any(),
+    Data :: quic_data(),
+    Result :: {keep_state, Data};
+                  
+                  (cast, Handle_Crypto, State, Data) -> Result when
+    %% Handle Crypto (cast)
+    %% I may separate these.
+    Handle_Crypto :: {handle_crypto, initial, Token, TLS_Info} |
+                     {handle_crypto, handshake, TLS_Info} |
+                     {handle_crypto, protected, TLS_Info},
+    Token :: binary(),
+    TLS_Info :: tls_record(),
+    State :: {initial, Endpoints} |
+             {handshake, Endpoints} |
+             {connected, Endpoints},
+    Endpoints :: client | server,
+    Data :: quic_data(),
+    Result :: Error | Out_Of_Order | Incomplete | Valid,
+    Out_Of_Order :: keep_state_and_data,
+    Incomplete :: {keep_state, Data},
+    Valid :: {keep_state, Data, [Transition]},
+    Transition :: {next_event, internal, rekey} | 
+                  {next_event, internal, continue_handshake},
+    Error :: {keep_state_and_data, {next_event, internal, {protocol_violation, Reason}}},
+    Reason :: term();
+                  
+                  (cast, Handle_Encrypted, State, Data) -> Result when
+    %% Handle Encrypted (cast)
+    Handle_Encrypted :: {handle_encrypted, binary(), non_neg_integer()},
+    State :: {initial | handshake | connect, Endpoints},
+    Endpoints :: client | server,
+    Data :: quic_data(),
+    Result :: {keep_state, Data} |
+              {keep_state_and_data, Error},
+    Error :: {next_event, internal, {protocol_violation, term()}};
+                  
+                  (cast, {handle, Pkt_Type, Frames}, State, Data) -> Result when
+    %% Handle Frames (cast)
+    Pkt_Type :: any(),
+    Frames :: [quic_frame()],
+    State :: {initial | handshake | connect, Endpoints},
+    Endpoints :: client | server,
+    Data :: quic_data(),
+    Result :: {keep_state, Data} |
+              {keep_state_and_data, Error},
+    Error :: {next_event, internal, {protocl_violation, term()}};
+                  
+                  (cast, {handle_acks, Crypto_Range, Acks}, State, Data) -> Result when
+    %% Handle Acks (cast)
+    Crypto_Range :: initial | handshake | protected,
+    Acks :: [quic_frame()],
+    State :: {initial | handshake | connected | slow_start | recovery | avoidance, 
+              Endpoints},
+    Endpoints :: client | server,
+    Data :: quic_data(),
+    Result :: {keep_state, Data} |
+              {next_state, State, Data} |
+              {next_state, {recovery, Endpoints}, Data, Congestion} |
+              {keep_state_and_data, Error},
+    Congestion :: {next_event, internal, {congestion_event, term()}},
+    Error :: {next_event, internal, {protocol_violation, term()}};
+                  
+                  (cast, {send, Frames}, State, Data) -> Result when
+    %% Sending frames (cast)
+    Frames :: [quic_frame()],
+    State :: {initial | handshake | connected | recovery | slow_start | avoidance,
+              Endpoints},
+    Endpoints :: client | server,
+    Data :: quic_data(),
+    Result :: {keep_state, Data};
+                  
+                  (internal, {congestion_event, Event}, State, Data) -> Result when
+    %% Congestion Events (internal)
+    Event :: {packets_lost, [non_neg_integer()]} |
+             {ecn_event, non_neg_integer()},
+    State :: {recovery, Endpoints},
+    Endpoints :: client | server,
+    Data :: quic_data(),
+    Result :: {keep_state, Data, {next_event, internal, {reduce_window, non_neg_integer()}}};
+
+                  (internal, {reduce_window, non_neg_integer()}, State, Data) -> Result when
+    %% Reduce Window (internal)
+    State :: {recovery, Endpoints},
+    Endpoints :: client | server,
+    Data :: quic_data(),
+    Result :: {keep_state, Data};
+                  
+                  (internal, rekey, State, Data) -> Result when
+    %% Rekey (internal)
+    State :: {connected | initial | handshake | recovery | slow_start | avoidance,
+              Endpoints},
+    Endpoints :: client | server,
+    Data :: quic_data(),
+    Success :: {next_event, internal, success},
+    Result :: {keep_state, Data} |
+              {keep_state, Data, Success};
+
+                  (internal, success, State, Data) -> Result when
+    %% Success (internal)
+    Data :: quic_data(),
+    State :: {connected, Endpoints},
+    Socket :: gen_quic:socket(),
+    Endpoints :: client | server,
+    Events :: {{timeout, handshake}, infinity, none} |
+              {reply, pid(), {ok, Socket}},
+    Result :: {next_state, {slow_start, Endpoints}, [Events]};
+                  
+                  (info, UDP, State, Data) -> Result when
+    %% Packet Receive (info)
+    Data :: quic_data(),
+    State :: {States, Endpoints},
+    States :: initial | handshake | connected | recovery | slow_start | avoidance,
+    Endpoints :: client | server,
+    UDP :: {udp, Socket, Address, Port, Packet},
+    Socket :: gen_quic:socket(),
+    Address :: inet:ip_address(),
+    Port :: inet:port_number(),
+    Packet :: binary(),
+    Error :: {next_event, internal, {protocol_violation, term()}},
+    Result :: {keep_state, Data} |
+              {keep_state_and_data, Error};
+                  
+                  (internal, Error, State, Data) -> Result when
+    %% Error 
+    State :: {States, Endpoints},
+    States :: initial | handshake | connected | recovery | slow_start | avoidance,
+    Endpoints :: client | server,
+    Error :: {protocol_violation, term()},
+    Reply :: {reply, pid(), Error},
+    Data :: quic_data(),
+    Result :: {stop_and_reply, normal, Reply, Data}.
+
 handle_event({call, From}, {connect, Address, Port, Timeout}, {initial, client},
              #{conn := #{socket := Socket} = Conn0
               } = Data0) ->
-  %% Only the client can call connect.  
+  %% Only the client can call connect.
   ok = inet:setopts(Socket, [{active, true}]),
 
   gen_statem:cast(self(), {send_handshake, client_hello}),
@@ -69,6 +248,10 @@ handle_event({call, From}, {connect, Address, Port, Timeout}, {initial, client},
                                owner => From}},
   {keep_state, Data, [{{timeout, handshake}, Timeout, {error, timeout}}]};
 
+handle_event(cast, connect, {initial, client}, Data0) ->
+  Data = send_and_form_packet(client_hello, Data0),
+  {keep_state, Data};
+
 handle_event({call, From}, {accept, LSocket, Timeout}, {initial, server}, 
              #{conn := Conn0} = Data0) ->
   %% Only the server can call accept.
@@ -76,10 +259,6 @@ handle_event({call, From}, {accept, LSocket, Timeout}, {initial, server},
   Data = Data0#{conn := Conn0#{owner => From}},
 
   {keep_state, Data, {{timeout, handshake}, Timeout, {error, timeout}}};
-
-handle_event(cast, connect, {initial, client}, Data0) ->
-  Data = send_and_form_packet(client_hello, Data0),
-  {keep_state, Data};
 
 handle_event(cast, {accept, LSocket}, {initial, server},
              #{conn := Conn0} = Data0) ->
@@ -145,6 +324,7 @@ handle_event(internal, continue_handshake, {handshake, server}, Data) ->
 
 handle_event(cast, {send_handshake, Pkt_Type}, _State, Data0) ->
   %% Should be common across all states.
+  io:format("Sending: ~p~n", [Pkt_Type]),
   Data = send_and_form_packet(Pkt_Type, Data0),
   {keep_state, Data};
 
@@ -180,7 +360,7 @@ handle_event(cast, {handle_encrypted, Packet, Attempt}, _State, Data0) ->
       {keep_state_and_data, {next_event, internal, {protocol_violation, Reason}}}
   end;
 
-handle_event(cast, {handle, Frames}, _State, Data0) ->
+handle_event(cast, {handle, _Pkt_Type, Frames}, _State, Data0) ->
   %% Should be common across all states.
   case handle_frames(Data0, Frames) of
     {ok, Data} ->
@@ -193,18 +373,19 @@ handle_event(cast, {handle, Frames}, _State, Data0) ->
 handle_event(cast, {handle_acks, Crypto_Range, Ack_Frames}, {State, Type}, Data0) ->
   %% This function should be the same across all states
   case quic_cc:handle_acks(State, Data0, Crypto_Range, Ack_Frames) of
-    %% {ok, Data} ->
-    %%   {keep_state, Data};
+    {ok, Data} ->
+      {keep_state, Data};
 
-    %% {error, Reason} ->
-    %%   {keep_state_and_data, {next_event, internal, {protocol_violation, Reason}}};
-
-    {New_State, Data} ->
-      %% Transitions from slow_start to avoidance.
-      {next_state, {New_State, Type}, Data};
+    {error, Reason} ->
+      {keep_state_and_data, {next_event, internal, {protocol_violation, Reason}}};
 
     {recovery, Data, Event} ->
-      {next_state, {recovery, Type}, Data, {next_event, internal, {congestion_event, Event}}}
+      {next_state, {recovery, Type}, Data, {next_event, internal, {congestion_event, Event}}};
+
+    {New_State, Data} when New_State == slow_start;
+                           New_State == avoidance ->
+      %% Transitions from slow_start to avoidance or recovery to slow_start
+      {next_state, {New_State, Type}, Data}
   end;
 
 handle_event(cast, {send, Frame}, {_State, _Type}, Data0) ->
@@ -302,8 +483,22 @@ code_change(_OldVsn, State, Data, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+
+-spec validate_and_reply(Packet_Level, TLS_Info, Data) -> Result when
+    Data :: quic_data(),
+    Packet_Level :: initial | handshake | protected,
+    TLS_Info :: tls_record(),
+    Result :: Error | Out_Of_Order | Incomplete | Valid,
+    Out_Of_Order :: keep_state_and_data,
+    Incomplete :: {keep_state, Data},
+    Valid :: {keep_state, Data, [Transition]},
+    Transition :: {next_event, internal, rekey} | 
+                  {next_event, internal, continue_handshake},
+    Error :: {keep_state_and_data, {next_event, internal, {protocol_violation, Reason}}},
+    Reason :: term().
 %% Called when a crypto frame is received in order to validate it and act appropriately.
 validate_and_reply(Packet_Level, TLS_Info, Data0) ->
+  io:format("Validating TLS Info.~n"),
   case quic_crypto:validate_tls(Data0, TLS_Info) of
     {invalid, Reason} ->
       {keep_state_and_data, {next_event, internal, {protocol_violation, Reason}}};
@@ -325,14 +520,37 @@ validate_and_reply(Packet_Level, TLS_Info, Data0) ->
       keep_state_and_data
   end.
 
-
+-spec send_and_form_packet(Pkt_Type, Data) -> {ok, Data} when
+    Data :: quic_data(),
+    Pkt_Type :: early_data | short | Handshake_Packet,
+    Handshake_Packet :: client_hello | server_hello | encrypted_exts |
+                        cert_verify | certificate | finished.
 send_and_form_packet(Pkt_Type, Data) ->
   quic_conn:send_and_form_packet(Pkt_Type, Data).
+
+
+-spec decrypt_and_parse_packet(Data, Raw_Packet, Attempt) -> Result when
+    Raw_Packet :: binary(),
+    Data :: quic_data(),
+    Attempt :: non_neg_integer(),
+    Result :: {ok, Data} |
+              {retry, Data} |
+              {error, Reason},
+    Reason :: gen_quic:error().
 
 decrypt_and_parse_packet(Data, Packet, Attempt) ->
   quic_conn:decrypt_and_parse_packet(Data, Packet, Attempt).
 
+
+-spec handle_frames(Data, Frames) -> {ok, Data} when
+    Data :: quic_data(),
+    Frames :: [Frame],
+    Frame :: quic_frame().
+
+handle_frames(Data, []) ->
+  {ok, Data};
+
 handle_frames(Data0, Frames) when is_list(Frames) ->
-  lists:foldl(fun(Acc, Frame) -> quic_conn:handle_frame(Acc, Frame) end, 
+  lists:foldl(fun(Data1, Frame) -> quic_conn:handle_frame(Frame, Data1) end, 
               Data0, Frames).
 
